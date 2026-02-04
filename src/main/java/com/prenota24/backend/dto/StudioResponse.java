@@ -1,0 +1,13 @@
+package com.prenota24.backend.dto;
+
+import java.util.UUID;
+
+
+public record StudioResponse(
+        UUID id,
+        String name,
+        String email,
+        String phone,
+        String timezone
+) {
+}
