@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: prenota24-postgres
+    environment:
+      POSTGRES_DB: prenota24
+      POSTGRES_USER: prenota24
+      POSTGRES_PASSWORD: prenota24
+      TZ: Europe/Rome
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prenota24 -d prenota24"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

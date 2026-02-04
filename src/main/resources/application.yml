@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: prenota24
+  datasource:
+    url: jdbc:postgresql://localhost:5433/prenota24
+    username: prenota24
+    password: prenota24
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
