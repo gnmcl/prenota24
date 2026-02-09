@@ -1,9 +1,10 @@
-package com.prenota24.backend.service;
+package com.prenota24.backend.service.impl;
 
 import com.prenota24.backend.domain.Studio;
 import com.prenota24.backend.dto.CreateStudioRequest;
 import com.prenota24.backend.dto.StudioResponse;
 import com.prenota24.backend.repository.StudioRepository;
+import com.prenota24.backend.service.IStudioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -11,7 +12,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-public class StudioService {
+public class StudioService implements IStudioService {
 
     private final StudioRepository studioRepository;
 
@@ -22,7 +23,7 @@ public class StudioService {
     }
 
     public StudioResponse getById(UUID id) {
-        var studio = studioRepository.findById(id).orElseThrow(() -> new RuntimeException("Studio not found"));
+        var studio = studioRepository.findById(id).orElseThrow(() -> new IllegalStateException("Studio not found"));
         return toResponse(studio);
     }
 

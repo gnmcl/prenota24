@@ -2,7 +2,8 @@ package com.prenota24.backend.controller;
 
 import com.prenota24.backend.dto.CreateStudioRequest;
 import com.prenota24.backend.dto.StudioResponse;
-import com.prenota24.backend.service.StudioService;
+import com.prenota24.backend.service.IStudioService;
+import com.prenota24.backend.service.impl.StudioService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -15,7 +16,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StudioController {
 
-    private final StudioService studioService;
+    private final IStudioService studioService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
