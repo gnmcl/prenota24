@@ -3,7 +3,6 @@ package com.prenota24.backend.controller;
 import com.prenota24.backend.dto.CreateStudioRequest;
 import com.prenota24.backend.dto.StudioResponse;
 import com.prenota24.backend.service.IStudioService;
-import com.prenota24.backend.service.impl.StudioService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

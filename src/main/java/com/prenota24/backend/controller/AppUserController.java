@@ -19,7 +19,7 @@ public class AppUserController {
 
     private final IAppUserService appUserService;
 
-    @PostMapping("/create")
+    @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public AppUserResponse create(@RequestBody @Valid CreateAppUserRequest request) {
         return appUserService.create(request);
