@@ -2,18 +2,21 @@ package com.prenota24.backend.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "app_user")
+@Table(name = "client")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AppUser {
+public class Client {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -23,25 +26,28 @@ public class AppUser {
     @JoinColumn(name = "studio_id", nullable = false)
     private Studio studio;
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "first_name", nullable = false, length = 100)
+    private String firstName;
+
+    @Column(name = "last_name", nullable = false, length = 100)
+    private String lastName;
+
     private String email;
 
-    @Column(length = 200)
-    private String name;
+    @Column(length = 50)
+    private String phone;
 
-    @Column(name = "password_hash", nullable = false)
-    private String passwordHash;
+    @Column(columnDefinition = "TEXT")
+    private String notes;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private UserRole role;
+    @Column(nullable = false, length = 50)
+    @Builder.Default
+    private ClientSource source = ClientSource.MANUAL;
 
-    @Column(nullable = false)
-    private boolean active;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "professional_id")
-    private Professional professional;
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(columnDefinition = "TEXT[]")
+    private List<String> tags;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -52,12 +58,12 @@ public class AppUser {
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
-        this.createdAt = now;
-        this.updatedAt = now;
+        createdAt = now;
+        updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        this.updatedAt = Instant.now();
+        updatedAt = Instant.now();
     }
 }

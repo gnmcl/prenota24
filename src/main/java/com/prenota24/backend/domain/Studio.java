@@ -28,6 +28,9 @@ public class Studio {
 
     private String timezone = "Europe/Rome";
 
+    @Column(unique = true, length = 100)
+    private String slug;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
