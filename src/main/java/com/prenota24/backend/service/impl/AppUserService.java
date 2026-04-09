@@ -1,6 +1,5 @@
 package com.prenota24.backend.service.impl;
 
-
 import com.prenota24.backend.domain.AppUser;
 import com.prenota24.backend.dto.CreateAppUserRequest;
 import com.prenota24.backend.dto.AppUserResponse;
@@ -9,8 +8,6 @@ import com.prenota24.backend.repository.StudioRepository;
 import com.prenota24.backend.service.IAppUserService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -20,7 +17,8 @@ public class AppUserService implements IAppUserService {
     private final StudioRepository studioRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public AppUserService(AppUserRepository appUserRepository, StudioRepository studioRepository, PasswordEncoder passwordEncoder) {
+    public AppUserService(AppUserRepository appUserRepository, StudioRepository studioRepository,
+            PasswordEncoder passwordEncoder) {
         this.appUserRepository = appUserRepository;
         this.studioRepository = studioRepository;
         this.passwordEncoder = passwordEncoder;
@@ -30,12 +28,12 @@ public class AppUserService implements IAppUserService {
 
         appUserRepository.findByEmailAndStudioId(request.email(), request.studioId())
                 .ifPresent(existingUser -> {
-            throw new IllegalArgumentException("User with email " + request.email() + " already exists in studio " + request.studioId());
-        });
+                    throw new IllegalArgumentException(
+                            "User with email " + request.email() + " already exists in studio " + request.studioId());
+                });
 
         var studio = studioRepository.findById(request.studioId())
-                .orElseThrow(() ->
-                        new IllegalArgumentException("Studio with id " + request.studioId() + " not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Studio with id " + request.studioId() + " not found"));
 
         var newUser = AppUser.builder()
                 .email(request.email())
@@ -52,8 +50,7 @@ public class AppUserService implements IAppUserService {
 
     public AppUserResponse getById(UUID id) {
         var user = appUserRepository.findById(id)
-                .orElseThrow(() ->
-                        new IllegalArgumentException("User with id " + id + " not found"));
+                .orElseThrow(() -> new IllegalArgumentException("User with id " + id + " not found"));
 
         return toResponse(user);
     }
@@ -64,8 +61,6 @@ public class AppUserService implements IAppUserService {
                 user.getStudio().getId(),
                 user.getEmail(),
                 user.getRole(),
-                user.isActive()
-        );
+                user.isActive());
     }
 }
-
