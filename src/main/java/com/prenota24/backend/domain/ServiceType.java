@@ -42,7 +42,7 @@ public class ServiceType {
     private BigDecimal price;
 
     /** Colore hex per calendario, es. #FF5733 */
-    @Column(columnDefinition = "char(7)")
+    @Column(length = 7)
     private String color;
 
     @Column(nullable = false)
