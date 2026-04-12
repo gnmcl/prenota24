@@ -17,3 +17,26 @@ spring:
 
   flyway:
     enabled: true
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+        from: ${MAIL_FROM:noreply@prenota24.it}
+
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 16
+
+jwt:
+  secret: ${JWT_SECRET:dev-only-secret-change-in-production-min-32-chars!!}
+  expiration-hours: ${JWT_EXPIRATION_HOURS:24}

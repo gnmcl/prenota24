@@ -1,6 +1,7 @@
 package com.prenota24.backend.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.prenota24.backend.config.JwtProperties;
 import com.prenota24.backend.dto.ErrorResponse;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -28,11 +29,12 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
-    private static final SecretKey key = Keys.hmacShaKeyFor("super-secret-prenota24-key-change-me".getBytes(StandardCharsets.UTF_8));
 
+    private final SecretKey key;
     private final ObjectMapper objectMapper;
 
-    public JwtAuthenticationFilter(ObjectMapper objectMapper) {
+    public JwtAuthenticationFilter(JwtProperties jwtProperties, ObjectMapper objectMapper) {
+        this.key = Keys.hmacShaKeyFor(jwtProperties.secret().getBytes(StandardCharsets.UTF_8));
         this.objectMapper = objectMapper;
     }
 

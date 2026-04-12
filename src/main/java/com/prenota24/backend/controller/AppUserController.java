@@ -1,6 +1,5 @@
 package com.prenota24.backend.controller;
 
-
 import com.prenota24.backend.dto.AppUserResponse;
 import com.prenota24.backend.dto.CreateAppUserRequest;
 import com.prenota24.backend.service.IAppUserService;
@@ -8,6 +7,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -21,6 +21,7 @@ public class AppUserController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('ADMIN')")
     public AppUserResponse create(@RequestBody @Valid CreateAppUserRequest request) {
         return appUserService.create(request);
     }
