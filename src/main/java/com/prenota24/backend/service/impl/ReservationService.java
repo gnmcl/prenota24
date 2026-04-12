@@ -1,6 +1,6 @@
 package com.prenota24.backend.service.impl;
 
-import com.prenota24.backend.domain.Event;
+import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.domain.EventStatus;
 import com.prenota24.backend.domain.Reservation;
 import com.prenota24.backend.domain.ReservationStatus;
@@ -27,23 +27,20 @@ public class ReservationService implements IReservationService {
     @Transactional
     public ReservationResponse create(String slug, CreateReservationRequest request) {
         var event = eventRepository.findBySlug(slug)
-                .orElseThrow(() -> new RuntimeException("Evento non trovato"));
+                .orElseThrow(() -> new EntityNotFoundException("Evento non trovato"));
 
-        // Check: event must be published
         if (event.getStatus() != EventStatus.PUBLISHED) {
-            throw new RuntimeException("L'evento non è aperto alle prenotazioni");
+            throw new IllegalArgumentException("L'evento non è aperto alle prenotazioni");
         }
 
-        // Check: duplicate email
         if (reservationRepository.existsByEventIdAndGuestEmail(event.getId(), request.guestEmail())) {
-            throw new RuntimeException("Hai già una prenotazione per questo evento");
+            throw new IllegalArgumentException("Hai già una prenotazione per questo evento");
         }
 
-        // Check: max participants
         if (event.getMaxParticipants() != null) {
             long currentCount = reservationRepository.countByEventIdAndStatus(event.getId(), ReservationStatus.CONFIRMED);
             if (currentCount >= event.getMaxParticipants()) {
-                throw new RuntimeException("I posti per questo evento sono esauriti");
+                throw new IllegalArgumentException("I posti per questo evento sono esauriti");
             }
         }
 
@@ -73,7 +70,7 @@ public class ReservationService implements IReservationService {
     @Transactional
     public ReservationResponse cancel(UUID reservationId) {
         var reservation = reservationRepository.findById(reservationId)
-                .orElseThrow(() -> new RuntimeException("Prenotazione non trovata"));
+                .orElseThrow(() -> new EntityNotFoundException("Prenotazione non trovata"));
 
         reservation.setStatus(ReservationStatus.CANCELLED);
         reservation = reservationRepository.save(reservation);

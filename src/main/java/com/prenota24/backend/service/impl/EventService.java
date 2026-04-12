@@ -1,5 +1,6 @@
 package com.prenota24.backend.service.impl;
 
+import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.domain.Event;
 import com.prenota24.backend.domain.EventStatus;
 import com.prenota24.backend.domain.ReservationStatus;
@@ -31,7 +32,7 @@ public class EventService implements IEventService {
     @Transactional
     public EventResponse create(CreateEventRequest request, UUID userId) {
         var user = appUserRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Utente non trovato"));
+                .orElseThrow(() -> new EntityNotFoundException("Utente non trovato"));
 
         var slug = generateSlug(request.title());
 
@@ -57,7 +58,7 @@ public class EventService implements IEventService {
     @Transactional(readOnly = true)
     public EventResponse getBySlug(String slug) {
         var event = eventRepository.findBySlug(slug)
-                .orElseThrow(() -> new RuntimeException("Evento non trovato"));
+                .orElseThrow(() -> new EntityNotFoundException("Evento non trovato"));
         var count = reservationRepository.countByEventIdAndStatus(event.getId(), ReservationStatus.CONFIRMED);
         return toEventResponse(event, count);
     }
@@ -76,11 +77,10 @@ public class EventService implements IEventService {
     @Transactional(readOnly = true)
     public EventResponse getById(UUID id, UUID userId) {
         var event = eventRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Evento non trovato"));
+                .orElseThrow(() -> new EntityNotFoundException("Evento non trovato"));
 
-        // Verify ownership
         if (!event.getCreatedBy().getId().equals(userId)) {
-            throw new RuntimeException("Non autorizzato");
+            throw new EntityNotFoundException("Evento non trovato");
         }
 
         var count = reservationRepository.countByEventIdAndStatus(event.getId(), ReservationStatus.CONFIRMED);
@@ -91,10 +91,10 @@ public class EventService implements IEventService {
     @Transactional
     public EventResponse updateStatus(UUID id, EventStatus status, UUID userId) {
         var event = eventRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Evento non trovato"));
+                .orElseThrow(() -> new EntityNotFoundException("Evento non trovato"));
 
         if (!event.getCreatedBy().getId().equals(userId)) {
-            throw new RuntimeException("Non autorizzato");
+            throw new EntityNotFoundException("Evento non trovato");
         }
 
         event.setStatus(status);
@@ -108,13 +108,12 @@ public class EventService implements IEventService {
     @Transactional
     public void delete(UUID id, UUID userId) {
         var event = eventRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Evento non trovato"));
+                .orElseThrow(() -> new EntityNotFoundException("Evento non trovato"));
 
         if (!event.getCreatedBy().getId().equals(userId)) {
-            throw new RuntimeException("Non autorizzato");
+            throw new EntityNotFoundException("Evento non trovato");
         }
 
-        // Delete all reservations first
         reservationRepository.deleteAllByEventId(id);
         eventRepository.delete(event);
     }
@@ -126,7 +125,6 @@ public class EventService implements IEventService {
         String suffix = UUID.randomUUID().toString().substring(0, 7);
         String slug = base + "-" + suffix;
 
-        // Guarantee uniqueness (extremely unlikely collision)
         while (eventRepository.findBySlug(slug).isPresent()) {
             suffix = UUID.randomUUID().toString().substring(0, 7);
             slug = base + "-" + suffix;
@@ -135,7 +133,6 @@ public class EventService implements IEventService {
     }
 
     private static String toSlug(String input) {
-        // Normalize accented chars
         String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
         Pattern pattern = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
         String withoutAccents = pattern.matcher(normalized).replaceAll("");

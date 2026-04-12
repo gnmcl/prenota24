@@ -1,24 +1,28 @@
 package com.prenota24.backend.common;
 
-
 import com.prenota24.backend.dto.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
-import java.nio.file.AccessDeniedException;
 import java.util.stream.Collectors;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     /* ---------- AUTH ---------- */
 
-    @ExceptionHandler
+    @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleBadCredentials(
             BadCredentialsException ex,
             HttpServletRequest request
@@ -32,7 +36,7 @@ public class GlobalExceptionHandler {
                 ));
     }
 
-    @ExceptionHandler
+    @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponse> handleAccessDenied(
             AccessDeniedException ex,
             HttpServletRequest request
@@ -46,7 +50,7 @@ public class GlobalExceptionHandler {
                 ));
     }
 
-    @ExceptionHandler
+    @ExceptionHandler(JwtAuthenticationException.class)
     public ResponseEntity<ErrorResponse> handleJwtAuthentication(
             JwtAuthenticationException ex,
             HttpServletRequest request
@@ -62,7 +66,7 @@ public class GlobalExceptionHandler {
 
     /* ---------- VALIDATION ---------- */
 
-    @ExceptionHandler
+    @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationException(
             MethodArgumentNotValidException ex,
             HttpServletRequest request) {
@@ -81,7 +85,71 @@ public class GlobalExceptionHandler {
                 ));
     }
 
-    /* ─────────────── BUSINESS ERRORS ─────────────── */
+    /* ---------- BUSINESS ERRORS ---------- */
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleEntityNotFound(
+            EntityNotFoundException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        "NOT_FOUND",
+                        ex.getMessage(),
+                        request.getRequestURI()
+                ));
+    }
+
+    @ExceptionHandler(IllegalStateTransitionException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalTransition(
+            IllegalStateTransitionException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(ErrorResponse.of(
+                        HttpStatus.UNPROCESSABLE_ENTITY.value(),
+                        "INVALID_STATE_TRANSITION",
+                        ex.getMessage(),
+                        request.getRequestURI()
+                ));
+    }
+
+    @ExceptionHandler(SlotNotAvailableException.class)
+    public ResponseEntity<ErrorResponse> handleSlotNotAvailable(
+            SlotNotAvailableException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "SLOT_NOT_AVAILABLE",
+                        ex.getMessage(),
+                        request.getRequestURI()
+                ));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConflict(
+            DataIntegrityViolationException ex,
+            HttpServletRequest request
+    ) {
+        String message = "Data conflict";
+        String code = "DATA_CONFLICT";
+
+        if (ex.getMessage() != null && ex.getMessage().contains("no_overlapping")) {
+            message = "L'orario selezionato si sovrappone con un altro appuntamento";
+            code = "APPOINTMENT_OVERLAP";
+        }
+
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        code,
+                        message,
+                        request.getRequestURI()
+                ));
+    }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(
@@ -98,13 +166,14 @@ public class GlobalExceptionHandler {
                 ));
     }
 
-    /* ─────────────── FALLBACK ─────────────── */
+    /* ---------- FALLBACK ---------- */
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(
             Exception ex,
             HttpServletRequest request
     ) {
+        logger.error("Unhandled exception on {}: {}", request.getRequestURI(), ex.getMessage(), ex);
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse.of(
@@ -114,5 +183,4 @@ public class GlobalExceptionHandler {
                         request.getRequestURI()
                 ));
     }
-
 }
