@@ -7,6 +7,7 @@ public record AuthUserResponse(
         String email,
         String name,
         String role,
-        UUID studioId
+        UUID studioId,
+        UUID professionalId
 ) {
 }
