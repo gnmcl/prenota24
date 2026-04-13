@@ -1,6 +1,10 @@
 package com.prenota24.backend.repository;
 
-import com.prenota24.backend.domain.Appointment;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -8,10 +12,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import com.prenota24.backend.domain.Appointment;
+import com.prenota24.backend.domain.AppointmentStatus;
 
 @Repository
 public interface AppointmentRepository extends JpaRepository<Appointment, UUID> {
@@ -49,4 +51,10 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
     List<Appointment> findForReminder(@Param("from") Instant from, @Param("to") Instant to);
 
     Page<Appointment> findByStudioIdAndProfessionalId(UUID studioId, UUID professionalId, Pageable pageable);
+
+    Page<Appointment> findByStudioIdAndStatus(UUID studioId, AppointmentStatus status, Pageable pageable);
+
+    Page<Appointment> findByStudioIdAndStatusAndProfessionalId(UUID studioId, AppointmentStatus status, UUID professionalId, Pageable pageable);
+
+    List<Appointment> findByClientIdAndStudioIdOrderByStartDatetimeDesc(UUID clientId, UUID studioId);
 }

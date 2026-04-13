@@ -1,11 +1,16 @@
 package com.prenota24.backend.service;
 
-import com.prenota24.backend.domain.CancelledBy;
-import com.prenota24.backend.dto.*;
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import java.util.UUID;
+import com.prenota24.backend.domain.CancelledBy;
+import com.prenota24.backend.dto.AppointmentResponse;
+import com.prenota24.backend.dto.CancelAppointmentRequest;
+import com.prenota24.backend.dto.CreateAppointmentRequest;
+import com.prenota24.backend.dto.ProposeNewTimeRequest;
+import com.prenota24.backend.dto.UpdateAppointmentRequest;
 
 public interface IAppointmentService {
 
@@ -13,7 +18,7 @@ public interface IAppointmentService {
 
     AppointmentResponse getById(UUID id, UUID studioId);
 
-    Page<AppointmentResponse> list(UUID studioId, Pageable pageable);
+    Page<AppointmentResponse> list(UUID studioId, String status, UUID professionalId, Pageable pageable);
 
     AppointmentResponse update(UUID id, UpdateAppointmentRequest request, UUID studioId);
 

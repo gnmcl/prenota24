@@ -1,24 +1,32 @@
 package com.prenota24.backend.service.impl;
 
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.domain.Client;
 import com.prenota24.backend.domain.ClientNote;
 import com.prenota24.backend.domain.ClientSource;
-import com.prenota24.backend.dto.*;
+import com.prenota24.backend.dto.AppointmentResponse;
+import com.prenota24.backend.dto.ClientNoteResponse;
+import com.prenota24.backend.dto.ClientResponse;
+import com.prenota24.backend.dto.ClientSummaryResponse;
+import com.prenota24.backend.dto.CreateClientNoteRequest;
+import com.prenota24.backend.dto.CreateClientRequest;
+import com.prenota24.backend.dto.UpdateClientRequest;
 import com.prenota24.backend.repository.AppUserRepository;
 import com.prenota24.backend.repository.AppointmentRepository;
 import com.prenota24.backend.repository.ClientNoteRepository;
 import com.prenota24.backend.repository.ClientRepository;
 import com.prenota24.backend.repository.StudioRepository;
 import com.prenota24.backend.service.IClientService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -165,6 +173,41 @@ public class ClientService implements IClientService {
 
     private Client createMinimalClient(String name, String phone, UUID studioId, ClientSource source) {
         return createMinimalClient(name, phone, null, studioId, source);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AppointmentResponse> getAppointments(UUID clientId, UUID studioId) {
+        findByIdAndStudio(clientId, studioId);
+        return appointmentRepository.findByClientIdAndStudioIdOrderByStartDatetimeDesc(clientId, studioId)
+                .stream()
+                .map(this::toAppointmentResponse)
+                .toList();
+    }
+
+    private AppointmentResponse toAppointmentResponse(com.prenota24.backend.domain.Appointment a) {
+        return new AppointmentResponse(
+                a.getId(),
+                a.getStudio().getId(),
+                a.getProfessional().getId(),
+                a.getProfessional().getFirstName() + " " + a.getProfessional().getLastName(),
+                a.getClient().getId(),
+                a.getClient().getFirstName() + " " + a.getClient().getLastName(),
+                a.getServiceType() != null ? a.getServiceType().getId() : null,
+                a.getServiceType() != null ? a.getServiceType().getName() : null,
+                a.getServiceType() != null ? a.getServiceType().getColor() : null,
+                a.getStartDatetime(),
+                a.getEndDatetime(),
+                a.getStatus(),
+                a.getNotes(),
+                a.getProposedStart(),
+                a.getProposedEnd(),
+                a.getCancellationReason(),
+                a.getCancelledBy(),
+                a.getToken(),
+                a.getCreatedAt(),
+                a.getUpdatedAt()
+        );
     }
 
     private Client createMinimalClient(String name, String phone, String email, UUID studioId, ClientSource source) {

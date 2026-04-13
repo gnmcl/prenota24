@@ -1,19 +1,33 @@
 package com.prenota24.backend.controller;
 
-import com.prenota24.backend.common.AuthHelper;
-import com.prenota24.backend.domain.CancelledBy;
-import com.prenota24.backend.dto.*;
-import com.prenota24.backend.service.IAppointmentService;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.UUID;
+import com.prenota24.backend.common.AuthHelper;
+import com.prenota24.backend.domain.CancelledBy;
+import com.prenota24.backend.dto.AppointmentResponse;
+import com.prenota24.backend.dto.CancelAppointmentRequest;
+import com.prenota24.backend.dto.CreateAppointmentRequest;
+import com.prenota24.backend.dto.ProposeNewTimeRequest;
+import com.prenota24.backend.dto.UpdateAppointmentRequest;
+import com.prenota24.backend.service.IAppointmentService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/appointments")
@@ -25,8 +39,10 @@ public class AppointmentController {
 
     @GetMapping
     public Page<AppointmentResponse> list(@PageableDefault(size = 20) Pageable pageable,
+                                           @RequestParam(required = false) String status,
+                                           @RequestParam(required = false) UUID professionalId,
                                            Authentication auth) {
-        return appointmentService.list(authHelper.getStudioId(auth), pageable);
+        return appointmentService.list(authHelper.getStudioId(auth), status, professionalId, pageable);
     }
 
     @PostMapping

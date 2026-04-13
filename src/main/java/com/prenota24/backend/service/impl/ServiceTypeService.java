@@ -1,6 +1,7 @@
 package com.prenota24.backend.service.impl;
 
 import com.prenota24.backend.common.EntityNotFoundException;
+import com.prenota24.backend.domain.Professional;
 import com.prenota24.backend.domain.ServiceType;
 import com.prenota24.backend.dto.CreateServiceTypeRequest;
 import com.prenota24.backend.dto.ServiceTypeResponse;
@@ -12,7 +13,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -29,22 +32,18 @@ public class ServiceTypeService implements IServiceTypeService {
         var studio = studioRepository.findById(studioId)
                 .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
 
-        var builder = ServiceType.builder()
+        var serviceType = ServiceType.builder()
                 .studio(studio)
                 .name(request.name())
                 .description(request.description())
                 .durationMinutes(request.durationMinutes())
                 .price(request.price())
                 .color(request.color())
-                .active(true);
+                .active(true)
+                .professionals(resolveProfessionals(request.professionalIds(), studioId))
+                .build();
 
-        if (request.professionalId() != null) {
-            var prof = professionalRepository.findByIdAndStudioId(request.professionalId(), studioId)
-                    .orElseThrow(() -> new EntityNotFoundException("Professionista non trovato"));
-            builder.professional(prof);
-        }
-
-        var serviceType = serviceTypeRepository.save(builder.build());
+        serviceType = serviceTypeRepository.save(serviceType);
         return toResponse(serviceType);
     }
 
@@ -73,14 +72,7 @@ public class ServiceTypeService implements IServiceTypeService {
         serviceType.setDurationMinutes(request.durationMinutes());
         serviceType.setPrice(request.price());
         serviceType.setColor(request.color());
-
-        if (request.professionalId() != null) {
-            var prof = professionalRepository.findByIdAndStudioId(request.professionalId(), studioId)
-                    .orElseThrow(() -> new EntityNotFoundException("Professionista non trovato"));
-            serviceType.setProfessional(prof);
-        } else {
-            serviceType.setProfessional(null);
-        }
+        serviceType.setProfessionals(resolveProfessionals(request.professionalIds(), studioId));
 
         serviceType = serviceTypeRepository.save(serviceType);
         return toResponse(serviceType);
@@ -99,10 +91,20 @@ public class ServiceTypeService implements IServiceTypeService {
                 .orElseThrow(() -> new EntityNotFoundException("Tipo di servizio non trovato"));
     }
 
+    private Set<Professional> resolveProfessionals(List<UUID> ids, UUID studioId) {
+        if (ids == null || ids.isEmpty()) return new HashSet<>();
+        var set = new HashSet<Professional>();
+        for (UUID pid : ids) {
+            set.add(professionalRepository.findByIdAndStudioId(pid, studioId)
+                    .orElseThrow(() -> new EntityNotFoundException("Professionista non trovato: " + pid)));
+        }
+        return set;
+    }
+
     private ServiceTypeResponse toResponse(ServiceType s) {
         return new ServiceTypeResponse(
                 s.getId(), s.getStudio().getId(),
-                s.getProfessional() != null ? s.getProfessional().getId() : null,
+                s.getProfessionals().stream().map(Professional::getId).toList(),
                 s.getName(), s.getDescription(),
                 s.getDurationMinutes(), s.getPrice(),
                 s.getColor(), s.isActive(),

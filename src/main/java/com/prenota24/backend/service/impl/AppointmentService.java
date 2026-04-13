@@ -1,18 +1,31 @@
 package com.prenota24.backend.service.impl;
 
-import com.prenota24.backend.common.EntityNotFoundException;
-import com.prenota24.backend.common.SlotNotAvailableException;
-import com.prenota24.backend.domain.*;
-import com.prenota24.backend.dto.*;
-import com.prenota24.backend.repository.*;
-import com.prenota24.backend.service.IAppointmentService;
-import lombok.RequiredArgsConstructor;
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
+import com.prenota24.backend.common.EntityNotFoundException;
+import com.prenota24.backend.common.SlotNotAvailableException;
+import com.prenota24.backend.domain.Appointment;
+import com.prenota24.backend.domain.AppointmentAction;
+import com.prenota24.backend.domain.AppointmentStatus;
+import com.prenota24.backend.domain.CancelledBy;
+import com.prenota24.backend.dto.AppointmentResponse;
+import com.prenota24.backend.dto.CancelAppointmentRequest;
+import com.prenota24.backend.dto.CreateAppointmentRequest;
+import com.prenota24.backend.dto.ProposeNewTimeRequest;
+import com.prenota24.backend.dto.UpdateAppointmentRequest;
+import com.prenota24.backend.repository.AppointmentRepository;
+import com.prenota24.backend.repository.ClientRepository;
+import com.prenota24.backend.repository.ProfessionalRepository;
+import com.prenota24.backend.repository.ServiceTypeRepository;
+import com.prenota24.backend.repository.StudioRepository;
+import com.prenota24.backend.service.IAppointmentService;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -70,9 +83,20 @@ public class AppointmentService implements IAppointmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<AppointmentResponse> list(UUID studioId, Pageable pageable) {
-        return appointmentRepository.findByStudioId(studioId, pageable)
-                .map(this::toResponse);
+    public Page<AppointmentResponse> list(UUID studioId, String status, UUID professionalId, Pageable pageable) {
+        Page<Appointment> page;
+        if (status != null && !status.isBlank() && professionalId != null) {
+            page = appointmentRepository.findByStudioIdAndStatusAndProfessionalId(
+                    studioId, AppointmentStatus.valueOf(status), professionalId, pageable);
+        } else if (status != null && !status.isBlank()) {
+            page = appointmentRepository.findByStudioIdAndStatus(
+                    studioId, AppointmentStatus.valueOf(status), pageable);
+        } else if (professionalId != null) {
+            page = appointmentRepository.findByStudioIdAndProfessionalId(studioId, professionalId, pageable);
+        } else {
+            page = appointmentRepository.findByStudioId(studioId, pageable);
+        }
+        return page.map(this::toResponse);
     }
 
     @Override
@@ -209,6 +233,7 @@ public class AppointmentService implements IAppointmentService {
                 a.getClient().getFirstName() + " " + a.getClient().getLastName(),
                 a.getServiceType() != null ? a.getServiceType().getId() : null,
                 a.getServiceType() != null ? a.getServiceType().getName() : null,
+                a.getServiceType() != null ? a.getServiceType().getColor() : null,
                 a.getStartDatetime(),
                 a.getEndDatetime(),
                 a.getStatus(),

@@ -1,11 +1,29 @@
 package com.prenota24.backend.domain;
 
-import jakarta.persistence.*;
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "service_type")
@@ -24,10 +42,14 @@ public class ServiceType {
     @JoinColumn(name = "studio_id", nullable = false)
     private Studio studio;
 
-    /** Null = disponibile per tutti i professionisti dello studio */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "professional_id")
-    private Professional professional;
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "professional_service_type",
+            joinColumns = @JoinColumn(name = "service_type_id"),
+            inverseJoinColumns = @JoinColumn(name = "professional_id")
+    )
+    @Builder.Default
+    private Set<Professional> professionals = new HashSet<>();
 
     @Column(nullable = false)
     private String name;

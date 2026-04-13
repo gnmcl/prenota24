@@ -1,10 +1,10 @@
 package com.prenota24.backend.dto;
 
-import com.prenota24.backend.domain.AppointmentStatus;
-import com.prenota24.backend.domain.CancelledBy;
-
 import java.time.Instant;
 import java.util.UUID;
+
+import com.prenota24.backend.domain.AppointmentStatus;
+import com.prenota24.backend.domain.CancelledBy;
 
 public record AppointmentResponse(
         UUID id,
@@ -15,6 +15,7 @@ public record AppointmentResponse(
         String clientFullName,
         UUID serviceTypeId,
         String serviceTypeName,
+        String serviceTypeColor,
         Instant startDatetime,
         Instant endDatetime,
         AppointmentStatus status,

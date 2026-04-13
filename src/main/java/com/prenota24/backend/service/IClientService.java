@@ -1,11 +1,17 @@
 package com.prenota24.backend.service;
 
-import com.prenota24.backend.domain.Client;
-import com.prenota24.backend.dto.*;
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import java.util.UUID;
+import com.prenota24.backend.domain.Client;
+import com.prenota24.backend.dto.ClientNoteResponse;
+import com.prenota24.backend.dto.ClientResponse;
+import com.prenota24.backend.dto.ClientSummaryResponse;
+import com.prenota24.backend.dto.CreateClientNoteRequest;
+import com.prenota24.backend.dto.CreateClientRequest;
+import com.prenota24.backend.dto.UpdateClientRequest;
 
 public interface IClientService {
 
@@ -30,4 +36,7 @@ public interface IClientService {
 
     // Import from reservation
     Client findOrCreateFromReservation(String email, String name, String phone, UUID studioId);
+
+    // Client appointments
+    java.util.List<com.prenota24.backend.dto.AppointmentResponse> getAppointments(UUID clientId, UUID studioId);
 }
