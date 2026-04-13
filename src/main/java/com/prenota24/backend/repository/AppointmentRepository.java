@@ -57,4 +57,25 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
     Page<Appointment> findByStudioIdAndStatusAndProfessionalId(UUID studioId, AppointmentStatus status, UUID professionalId, Pageable pageable);
 
     List<Appointment> findByClientIdAndStudioIdOrderByStartDatetimeDesc(UUID clientId, UUID studioId);
+
+    // ── Professional Portal queries ──────────────────────────
+    Page<Appointment> findByProfessionalId(UUID professionalId, Pageable pageable);
+
+    Page<Appointment> findByProfessionalIdAndStatus(UUID professionalId, AppointmentStatus status, Pageable pageable);
+
+    Optional<Appointment> findByIdAndProfessionalId(UUID id, UUID professionalId);
+
+    long countByProfessionalIdAndStatusIn(UUID professionalId, java.util.Collection<AppointmentStatus> statuses);
+
+    @Query("""
+            SELECT COUNT(a) FROM Appointment a
+            WHERE a.professional.id = :professionalId
+            AND a.startDatetime >= :from
+            AND a.startDatetime < :to
+            AND a.status IN (com.prenota24.backend.domain.AppointmentStatus.CONFIRMED,
+                             com.prenota24.backend.domain.AppointmentStatus.REQUESTED)
+            """)
+    long countTodayAppointments(@Param("professionalId") UUID professionalId,
+                                @Param("from") Instant from,
+                                @Param("to") Instant to);
 }

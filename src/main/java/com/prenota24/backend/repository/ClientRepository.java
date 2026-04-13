@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -32,4 +33,7 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
             ORDER BY c.lastName ASC, c.firstName ASC
             """)
     Page<Client> search(@Param("studioId") UUID studioId, @Param("q") String q, Pageable pageable);
+
+    @Query("SELECT DISTINCT a.client FROM Appointment a WHERE a.professional.id = :professionalId ORDER BY a.client.lastName ASC")
+    List<Client> findClientsByProfessionalId(@Param("professionalId") UUID professionalId);
 }
