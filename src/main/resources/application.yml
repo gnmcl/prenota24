@@ -2,10 +2,9 @@ spring:
   application:
     name: prenota24
   datasource:
-    url: jdbc:postgresql://localhost:5433/prenota24
-    username: prenota24
-    password: prenota24
-    driver-class-name: org.postgresql.Driver
+    url: ${DB_URL:jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:5432/postgres}
+    username: ${DB_USERNAME:postgres.wrvqowbpalfzxlmutiqq}
+    password: ${DB_PASSWORD:Prenota24!!!}
 
   jpa:
     hibernate:
