@@ -1,12 +1,11 @@
 package com.prenota24.backend.auth;
 
 import com.prenota24.backend.config.JwtProperties;
-import com.prenota24.backend.domain.AppUser;
-import com.prenota24.backend.domain.Studio;
-import com.prenota24.backend.domain.UserRole;
+import com.prenota24.backend.domain.*;
 import com.prenota24.backend.dto.*;
 import com.prenota24.backend.repository.AppUserRepository;
 import com.prenota24.backend.repository.StudioRepository;
+import com.prenota24.backend.repository.TeamInvitationRepository;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 
@@ -29,16 +28,19 @@ public class AuthService {
 
     private final AppUserRepository appUserRepository;
     private final StudioRepository studioRepository;
+    private final TeamInvitationRepository teamInvitationRepository;
     private final PasswordEncoder passwordEncoder;
     private final SecretKey key;
     private final int expirationHours;
 
     public AuthService(AppUserRepository appUserRepository,
                        StudioRepository studioRepository,
+                       TeamInvitationRepository teamInvitationRepository,
                        PasswordEncoder passwordEncoder,
                        JwtProperties jwtProperties) {
         this.appUserRepository = appUserRepository;
         this.studioRepository = studioRepository;
+        this.teamInvitationRepository = teamInvitationRepository;
         this.passwordEncoder = passwordEncoder;
         this.key = Keys.hmacShaKeyFor(jwtProperties.secret().getBytes(StandardCharsets.UTF_8));
         this.expirationHours = jwtProperties.expirationHours();
@@ -93,13 +95,65 @@ public class AuthService {
         return new RegisterResponse(token, authUser);
     }
 
+    // ── Accept Invitation ──────────────────────────────────────────
+
+    @Transactional
+    public LoginResponse acceptInvitation(AcceptInvitationRequest request) {
+        var invitation = teamInvitationRepository.findByToken(request.token())
+                .orElseThrow(() -> new RuntimeException("Invito non trovato"));
+
+        if (invitation.getStatus() != InvitationStatus.PENDING) {
+            throw new RuntimeException("Questo invito è già stato utilizzato o revocato");
+        }
+
+        if (invitation.getExpiresAt().isBefore(Instant.now())) {
+            invitation.setStatus(InvitationStatus.EXPIRED);
+            teamInvitationRepository.save(invitation);
+            throw new RuntimeException("Questo invito è scaduto");
+        }
+
+        // Check if email is already registered
+        if (appUserRepository.findByEmail(invitation.getEmail()).isPresent()) {
+            throw new RuntimeException("Email già registrata");
+        }
+
+        // Create AppUser linked to the professional and studio
+        var user = AppUser.builder()
+                .studio(invitation.getStudio())
+                .email(invitation.getEmail())
+                .name(request.name())
+                .passwordHash(passwordEncoder.encode(request.password()))
+                .role(UserRole.PROFESSIONAL)
+                .professional(invitation.getProfessional())
+                .active(true)
+                .build();
+        user = appUserRepository.save(user);
+
+        // Mark invitation as accepted
+        invitation.setStatus(InvitationStatus.ACCEPTED);
+        invitation.setAcceptedAt(Instant.now());
+        teamInvitationRepository.save(invitation);
+
+        var token = generateToken(user.getId().toString(), user.getRole().toString());
+        var authUser = toAuthUserResponse(user);
+
+        return new LoginResponse(token, authUser);
+    }
+
+    // ────────────────────────────────────────────────────────────────
+
     private AuthUserResponse toAuthUserResponse(AppUser user) {
+        UUID professionalId = user.getProfessional() != null
+                ? user.getProfessional().getId()
+                : null;
+
         return new AuthUserResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getName(),
                 user.getRole().toString(),
-                user.getStudio().getId()
+                user.getStudio().getId(),
+                professionalId
         );
     }
 

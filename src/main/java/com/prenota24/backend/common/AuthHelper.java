@@ -22,6 +22,14 @@ public class AuthHelper {
         return getUser(authentication).getStudio().getId();
     }
 
+    public UUID getProfessionalId(Authentication authentication) {
+        var user = getUser(authentication);
+        if (user.getProfessional() == null) {
+            throw new IllegalStateException("L'utente non è associato a un professionista");
+        }
+        return user.getProfessional().getId();
+    }
+
     public AppUser getUser(Authentication authentication) {
         UUID userId = getUserId(authentication);
         return appUserRepository.findById(userId)
