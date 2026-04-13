@@ -1,19 +1,49 @@
 package com.prenota24.backend.service.impl;
 
-import com.prenota24.backend.common.EntityNotFoundException;
-import com.prenota24.backend.domain.*;
-import com.prenota24.backend.dto.*;
-import com.prenota24.backend.repository.*;
-import com.prenota24.backend.service.IProfessionalPortalService;
-import lombok.RequiredArgsConstructor;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.*;
-import java.util.List;
-import java.util.UUID;
+import com.prenota24.backend.common.EntityNotFoundException;
+import com.prenota24.backend.domain.Appointment;
+import com.prenota24.backend.domain.AppointmentAction;
+import com.prenota24.backend.domain.AppointmentStatus;
+import com.prenota24.backend.domain.Availability;
+import com.prenota24.backend.domain.AvailabilityException;
+import com.prenota24.backend.domain.CancelledBy;
+import com.prenota24.backend.domain.Client;
+import com.prenota24.backend.domain.ClientSource;
+import com.prenota24.backend.domain.Professional;
+import com.prenota24.backend.domain.Studio;
+import com.prenota24.backend.dto.AppointmentResponse;
+import com.prenota24.backend.dto.AvailabilityExceptionResponse;
+import com.prenota24.backend.dto.AvailabilityResponse;
+import com.prenota24.backend.dto.AvailabilitySlotRequest;
+import com.prenota24.backend.dto.CancelAppointmentRequest;
+import com.prenota24.backend.dto.ClientSummaryResponse;
+import com.prenota24.backend.dto.CreateAppointmentRequest;
+import com.prenota24.backend.dto.CreateAvailabilityExceptionRequest;
+import com.prenota24.backend.dto.CreateClientRequest;
+import com.prenota24.backend.dto.ProfessionalDashboardResponse;
+import com.prenota24.backend.dto.ProfessionalResponse;
+import com.prenota24.backend.dto.ServiceTypeResponse;
+import com.prenota24.backend.dto.StudioResponse;
+import com.prenota24.backend.repository.AppointmentRepository;
+import com.prenota24.backend.repository.AvailabilityExceptionRepository;
+import com.prenota24.backend.repository.AvailabilityRepository;
+import com.prenota24.backend.repository.ClientRepository;
+import com.prenota24.backend.repository.ProfessionalRepository;
+import com.prenota24.backend.repository.ServiceTypeRepository;
+import com.prenota24.backend.repository.StudioRepository;
+import com.prenota24.backend.service.IProfessionalPortalService;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -38,7 +68,8 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
                 .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
 
         // Today's appointments
-        var zone = ZoneId.of(studio.getTimezone());
+        var tz = studio.getTimezone();
+        var zone = ZoneId.of(tz != null ? tz : "Europe/Rome");
         var todayStart = LocalDate.now(zone).atStartOfDay(zone).toInstant();
         var todayEnd = todayStart.plus(java.time.Duration.ofDays(1));
         long todayCount = appointmentRepository.countTodayAppointments(professionalId, todayStart, todayEnd);
@@ -171,6 +202,44 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
                         c.getEmail(),
                         c.getPhone(),
                         c.getCreatedAt()
+                ))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public ClientSummaryResponse createClient(CreateClientRequest request, UUID professionalId, UUID studioId) {
+        var studio = studioRepository.findById(studioId)
+                .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
+
+        var client = Client.builder()
+                .studio(studio)
+                .firstName(request.firstName())
+                .lastName(request.lastName())
+                .email(request.email())
+                .phone(request.phone())
+                .notes(request.notes())
+                .tags(request.tags())
+                .source(ClientSource.MANUAL)
+                .build();
+
+        client = clientRepository.save(client);
+        return new ClientSummaryResponse(
+                client.getId(), client.getFirstName(), client.getLastName(),
+                client.getEmail(), client.getPhone(), client.getCreatedAt()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ServiceTypeResponse> getMyServiceTypes(UUID professionalId, UUID studioId) {
+        return serviceTypeRepository.findByStudioIdAndActiveTrue(studioId).stream()
+                .filter(st -> st.getProfessionals().isEmpty() || st.getProfessionals().stream().anyMatch(p -> p.getId().equals(professionalId)))
+                .map(st -> new ServiceTypeResponse(
+                        st.getId(), st.getStudio().getId(),
+                        st.getProfessionals().stream().map(p -> p.getId()).toList(),
+                        st.getName(), st.getDescription(), st.getDurationMinutes(),
+                        st.getPrice(), st.getColor(), st.isActive(), st.getCreatedAt()
                 ))
                 .toList();
     }

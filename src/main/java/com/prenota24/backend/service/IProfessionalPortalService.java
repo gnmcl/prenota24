@@ -1,13 +1,22 @@
 package com.prenota24.backend.service;
 
-import com.prenota24.backend.domain.CancelledBy;
-import com.prenota24.backend.dto.*;
+import java.util.List;
+import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import java.util.List;
-import java.util.UUID;
+import com.prenota24.backend.dto.AppointmentResponse;
+import com.prenota24.backend.dto.AvailabilityExceptionResponse;
+import com.prenota24.backend.dto.AvailabilityResponse;
+import com.prenota24.backend.dto.AvailabilitySlotRequest;
+import com.prenota24.backend.dto.CancelAppointmentRequest;
+import com.prenota24.backend.dto.ClientSummaryResponse;
+import com.prenota24.backend.dto.CreateAppointmentRequest;
+import com.prenota24.backend.dto.CreateAvailabilityExceptionRequest;
+import com.prenota24.backend.dto.CreateClientRequest;
+import com.prenota24.backend.dto.ProfessionalDashboardResponse;
+import com.prenota24.backend.dto.ServiceTypeResponse;
 
 public interface IProfessionalPortalService {
 
@@ -18,6 +27,10 @@ public interface IProfessionalPortalService {
     AppointmentResponse getMyAppointmentById(UUID appointmentId, UUID professionalId);
 
     List<ClientSummaryResponse> getMyClients(UUID professionalId);
+
+    ClientSummaryResponse createClient(CreateClientRequest request, UUID professionalId, UUID studioId);
+
+    List<ServiceTypeResponse> getMyServiceTypes(UUID professionalId, UUID studioId);
 
     AppointmentResponse createAppointment(CreateAppointmentRequest request, UUID professionalId, UUID studioId);
 

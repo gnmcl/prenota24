@@ -1,21 +1,43 @@
 package com.prenota24.backend.controller;
 
-import com.prenota24.backend.common.AuthHelper;
-import com.prenota24.backend.dto.*;
-import com.prenota24.backend.service.IProfessionalPortalService;
-import com.prenota24.backend.service.IStudioService;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
+import java.util.List;
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-import java.util.UUID;
+import com.prenota24.backend.common.AuthHelper;
+import com.prenota24.backend.dto.AppointmentResponse;
+import com.prenota24.backend.dto.AvailabilityExceptionResponse;
+import com.prenota24.backend.dto.AvailabilityResponse;
+import com.prenota24.backend.dto.AvailabilitySlotRequest;
+import com.prenota24.backend.dto.CancelAppointmentRequest;
+import com.prenota24.backend.dto.ClientSummaryResponse;
+import com.prenota24.backend.dto.CreateAppointmentRequest;
+import com.prenota24.backend.dto.CreateAvailabilityExceptionRequest;
+import com.prenota24.backend.dto.CreateClientRequest;
+import com.prenota24.backend.dto.ProfessionalDashboardResponse;
+import com.prenota24.backend.dto.ServiceTypeResponse;
+import com.prenota24.backend.dto.StudioResponse;
+import com.prenota24.backend.service.IProfessionalPortalService;
+import com.prenota24.backend.service.IStudioService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/portal")
@@ -105,6 +127,27 @@ public class ProfessionalPortalController {
     @GetMapping("/clients")
     public List<ClientSummaryResponse> listClients(Authentication auth) {
         return portalService.getMyClients(authHelper.getProfessionalId(auth));
+    }
+
+    @PostMapping("/clients")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ClientSummaryResponse createClient(@RequestBody @Valid CreateClientRequest request,
+                                               Authentication auth) {
+        return portalService.createClient(
+                request,
+                authHelper.getProfessionalId(auth),
+                authHelper.getStudioId(auth)
+        );
+    }
+
+    // ── Service Types ──────────────────────────────────────
+
+    @GetMapping("/service-types")
+    public List<ServiceTypeResponse> listServiceTypes(Authentication auth) {
+        return portalService.getMyServiceTypes(
+                authHelper.getProfessionalId(auth),
+                authHelper.getStudioId(auth)
+        );
     }
 
     // ── Availability ──────────────────────────────────────
