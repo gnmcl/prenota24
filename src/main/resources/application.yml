@@ -2,9 +2,15 @@ spring:
   application:
     name: prenota24
   datasource:
-    url: ${DB_URL:jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:5432/postgres}
+    url: ${DB_URL:jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true&prepareThreshold=0}
     username: ${DB_USERNAME:postgres.wrvqowbpalfzxlmutiqq}
     password: ${DB_PASSWORD:Prenota24!!!}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
 
   jpa:
     hibernate:
