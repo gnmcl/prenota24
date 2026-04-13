@@ -1,10 +1,7 @@
 package com.prenota24.backend.controller;
 
 import com.prenota24.backend.auth.AuthService;
-import com.prenota24.backend.dto.LoginRequest;
-import com.prenota24.backend.dto.LoginResponse;
-import com.prenota24.backend.dto.RegisterRequest;
-import com.prenota24.backend.dto.RegisterResponse;
+import com.prenota24.backend.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -27,5 +24,11 @@ public class AuthController {
     @ResponseStatus(HttpStatus.CREATED)
     public RegisterResponse register(@RequestBody @Valid RegisterRequest request) {
         return authService.register(request);
+    }
+
+    @PostMapping("/accept-invitation")
+    @ResponseStatus(HttpStatus.CREATED)
+    public LoginResponse acceptInvitation(@RequestBody @Valid AcceptInvitationRequest request) {
+        return authService.acceptInvitation(request);
     }
 }
