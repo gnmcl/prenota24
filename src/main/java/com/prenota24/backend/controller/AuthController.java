@@ -31,10 +31,27 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Registrazione studio", description = "Crea nuovo studio + utente ADMIN, restituisce JWT")
-    @ApiResponse(responseCode = "201", description = "Registrazione completata")
+    @Operation(summary = "Registrazione studio", description = "Crea nuovo studio + utente ADMIN e invia codice di verifica email")
+    @ApiResponse(responseCode = "201", description = "Registrazione completata, codice inviato")
     public RegisterResponse register(@RequestBody @Valid RegisterRequest request) {
         return authService.register(request);
+    }
+
+    @PostMapping("/verify-email")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Verifica email", description = "Verifica il codice inviato via email e restituisce JWT")
+    @ApiResponse(responseCode = "200", description = "Email verificata")
+    @ApiResponse(responseCode = "400", description = "Codice non valido o scaduto")
+    public LoginResponse verifyEmail(@RequestBody @Valid VerifyEmailRequest request) {
+        return authService.verifyEmail(request);
+    }
+
+    @PostMapping("/resend-verification")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Reinvia codice verifica", description = "Genera e invia un nuovo codice di verifica")
+    @ApiResponse(responseCode = "200", description = "Codice reinviato")
+    public void resendVerification(@RequestBody @Valid ResendVerificationRequest request) {
+        authService.resendVerificationCode(request);
     }
 
     @PostMapping("/accept-invitation")

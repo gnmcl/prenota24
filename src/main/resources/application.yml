@@ -24,17 +24,17 @@ spring:
     enabled: true
 
   mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
+    host: ${MAIL_HOST:smtps.aruba.it}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:postmaster@prenota24.com}
+    password: ${MAIL_PASSWORD:Gnmcl012025!}
     properties:
       mail:
         smtp:
           auth: true
-          starttls:
+          ssl:
             enable: true
-        from: ${MAIL_FROM:noreply@prenota24.it}
+        from: ${MAIL_FROM:postmaster@prenota24.com}
 
   task:
     execution:
