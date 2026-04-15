@@ -1,20 +1,5 @@
 package com.prenota24.backend.auth;
 
-import com.prenota24.backend.config.JwtProperties;
-import com.prenota24.backend.domain.*;
-import com.prenota24.backend.dto.*;
-import com.prenota24.backend.repository.AppUserRepository;
-import com.prenota24.backend.repository.StudioRepository;
-import com.prenota24.backend.repository.TeamInvitationRepository;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.time.Instant;
@@ -22,6 +7,32 @@ import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.UUID;
 import java.util.regex.Pattern;
+
+import javax.crypto.SecretKey;
+
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.prenota24.backend.common.EntityNotFoundException;
+import com.prenota24.backend.config.JwtProperties;
+import com.prenota24.backend.domain.AppUser;
+import com.prenota24.backend.domain.InvitationStatus;
+import com.prenota24.backend.domain.Studio;
+import com.prenota24.backend.domain.UserRole;
+import com.prenota24.backend.dto.AcceptInvitationRequest;
+import com.prenota24.backend.dto.AuthUserResponse;
+import com.prenota24.backend.dto.LoginRequest;
+import com.prenota24.backend.dto.LoginResponse;
+import com.prenota24.backend.dto.RegisterRequest;
+import com.prenota24.backend.dto.RegisterResponse;
+import com.prenota24.backend.repository.AppUserRepository;
+import com.prenota24.backend.repository.StudioRepository;
+import com.prenota24.backend.repository.TeamInvitationRepository;
+
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 
 @Service
 public class AuthService {
@@ -48,7 +59,7 @@ public class AuthService {
 
     public LoginResponse login(LoginRequest request) {
         var user = appUserRepository.findByEmail(request.email())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
         if (!user.isActive()) {
             throw new RuntimeException("User is inactive");

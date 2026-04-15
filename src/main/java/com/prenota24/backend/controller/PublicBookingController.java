@@ -1,14 +1,17 @@
 package com.prenota24.backend.controller;
 
 import com.prenota24.backend.common.EntityNotFoundException;
-import com.prenota24.backend.domain.AppointmentStatus;
-import com.prenota24.backend.domain.ClientSource;
 import com.prenota24.backend.dto.*;
 import com.prenota24.backend.repository.StudioRepository;
 import com.prenota24.backend.service.IAppointmentService;
 import com.prenota24.backend.service.IClientService;
 import com.prenota24.backend.service.IProfessionalService;
 import com.prenota24.backend.service.IServiceTypeService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -25,6 +28,8 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/public/book/{studioSlug}")
 @RequiredArgsConstructor
+@Tag(name = "Public Booking", description = "Flusso pubblico prenotazione appuntamenti (nessuna auth richiesta)")
+@SecurityRequirements
 public class PublicBookingController {
 
     private final StudioRepository studioRepository;
@@ -34,6 +39,7 @@ public class PublicBookingController {
     private final IAppointmentService appointmentService;
 
     @GetMapping
+    @Operation(summary = "Info studio pubblico", description = "Ritorna nome, slug, timezone e lista professionisti attivi")
     public StudioPublicResponse getStudio(@PathVariable String studioSlug) {
         var studio = studioRepository.findBySlug(studioSlug)
                 .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
@@ -51,6 +57,7 @@ public class PublicBookingController {
     }
 
     @GetMapping("/services")
+    @Operation(summary = "Servizi disponibili dello studio")
     public List<ServiceTypeResponse> getServices(@PathVariable String studioSlug) {
         var studio = studioRepository.findBySlug(studioSlug)
                 .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
@@ -58,15 +65,16 @@ public class PublicBookingController {
     }
 
     @GetMapping("/professionals/{profId}/slots")
+    @Operation(summary = "Slot disponibili per un professionista", description = "Restituisce slot liberi per la data richiesta")
     public List<TimeSlotResponse> getSlots(@PathVariable String studioSlug,
                                             @PathVariable UUID profId,
+                                            @Parameter(description = "Data nel formato ISO (es. 2026-05-01)")
                                             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
                                             @RequestParam(required = false) UUID serviceTypeId,
                                             @RequestParam(defaultValue = "60") int durationMinutes) {
         var studio = studioRepository.findBySlug(studioSlug)
                 .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
 
-        // If serviceTypeId provided, use its duration
         if (serviceTypeId != null) {
             var service = serviceTypeService.getById(serviceTypeId, studio.getId());
             durationMinutes = service.durationMinutes();
@@ -77,12 +85,14 @@ public class PublicBookingController {
 
     @PostMapping("/appointments")
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Prenota appuntamento pubblico", description = "Crea/trova il cliente e crea appuntamento in stato REQUESTED")
+    @ApiResponse(responseCode = "201", description = "Appuntamento creato")
+    @ApiResponse(responseCode = "409", description = "Slot già occupato")
     public AppointmentResponse createAppointment(@PathVariable String studioSlug,
                                                   @RequestBody @Valid PublicBookingRequest request) {
         var studio = studioRepository.findBySlug(studioSlug)
                 .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
 
-        // Find or create client
         var client = clientService.findOrCreateFromReservation(
                 request.clientEmail(),
                 request.clientFirstName() + " " + request.clientLastName(),
@@ -90,7 +100,6 @@ public class PublicBookingController {
                 studio.getId()
         );
 
-        // Create appointment as REQUESTED
         var appointmentRequest = new CreateAppointmentRequest(
                 request.professionalId(),
                 client.getId(),
@@ -98,7 +107,7 @@ public class PublicBookingController {
                 request.startDatetime(),
                 request.endDatetime(),
                 request.notes(),
-                false // Not confirmed immediately for public bookings
+                false
         );
 
         return appointmentService.create(appointmentRequest, studio.getId());

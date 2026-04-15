@@ -116,7 +116,7 @@ public class ClientService implements IClientService {
     public ClientNoteResponse addNote(UUID clientId, CreateClientNoteRequest request, UUID authorId, UUID studioId) {
         var client = findByIdAndStudio(clientId, studioId);
         var author = appUserRepository.findById(authorId)
-                .orElseThrow(() -> new EntityNotFoundException("Utente non trovato"));
+                .orElseThrow(() -> new RuntimeException("Utente non trovato"));
 
         var noteBuilder = ClientNote.builder()
                 .client(client)
@@ -162,7 +162,7 @@ public class ClientService implements IClientService {
     @Transactional
     public Client findOrCreateFromReservation(String email, String name, String phone, UUID studioId) {
         if (email == null || email.isBlank()) {
-            return createMinimalClient(name, phone, studioId, ClientSource.RESERVATION_IMPORT);
+            return createMinimalClient(name, phone, studioId);
         }
 
         return clientRepository.findByStudioIdAndEmailIgnoreCase(studioId, email)
@@ -171,8 +171,8 @@ public class ClientService implements IClientService {
 
     // ── Helpers ──────────────────────────────────────
 
-    private Client createMinimalClient(String name, String phone, UUID studioId, ClientSource source) {
-        return createMinimalClient(name, phone, null, studioId, source);
+    private Client createMinimalClient(String name, String phone, UUID studioId) {
+        return createMinimalClient(name, phone, null, studioId, ClientSource.RESERVATION_IMPORT);
     }
 
     @Override

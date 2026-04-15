@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,10 +19,12 @@ import com.prenota24.backend.domain.AppointmentStatus;
 @Repository
 public interface AppointmentRepository extends JpaRepository<Appointment, UUID> {
 
+    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
     Page<Appointment> findByStudioId(UUID studioId, Pageable pageable);
 
     Optional<Appointment> findByToken(String token);
 
+    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
     Optional<Appointment> findByIdAndStudioId(UUID id, UUID studioId);
 
     @Query("""
@@ -50,10 +53,13 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
             """)
     List<Appointment> findForReminder(@Param("from") Instant from, @Param("to") Instant to);
 
+    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
     Page<Appointment> findByStudioIdAndProfessionalId(UUID studioId, UUID professionalId, Pageable pageable);
 
+    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
     Page<Appointment> findByStudioIdAndStatus(UUID studioId, AppointmentStatus status, Pageable pageable);
 
+    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
     Page<Appointment> findByStudioIdAndStatusAndProfessionalId(UUID studioId, AppointmentStatus status, UUID professionalId, Pageable pageable);
 
     List<Appointment> findByClientIdAndStudioIdOrderByStartDatetimeDesc(UUID clientId, UUID studioId);

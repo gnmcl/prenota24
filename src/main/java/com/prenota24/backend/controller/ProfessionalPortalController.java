@@ -36,6 +36,8 @@ import com.prenota24.backend.dto.StudioResponse;
 import com.prenota24.backend.service.IProfessionalPortalService;
 import com.prenota24.backend.service.IStudioService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -43,6 +45,7 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/portal")
 @PreAuthorize("hasRole('PROFESSIONAL')")
 @RequiredArgsConstructor
+@Tag(name = "Professional Portal", description = "Portale del professionista: dashboard, appuntamenti, clienti, disponibilità (solo PROFESSIONAL)")
 public class ProfessionalPortalController {
 
     private final IProfessionalPortalService portalService;
@@ -52,6 +55,7 @@ public class ProfessionalPortalController {
     // ── Dashboard ──────────────────────────────────────
 
     @GetMapping("/dashboard")
+    @Operation(summary = "Dashboard professionista", description = "Appuntamenti di oggi, clienti totali, richieste in attesa")
     public ProfessionalDashboardResponse dashboard(Authentication auth) {
         return portalService.getDashboard(
                 authHelper.getProfessionalId(auth),
@@ -77,6 +81,7 @@ public class ProfessionalPortalController {
     // ── Appointments ──────────────────────────────────────
 
     @GetMapping("/appointments")
+    @Operation(summary = "Lista appuntamenti del professionista corrente")
     public Page<AppointmentResponse> listAppointments(
             @PageableDefault(size = 20) Pageable pageable,
             @RequestParam(required = false) String status,
@@ -153,6 +158,7 @@ public class ProfessionalPortalController {
     // ── Availability ──────────────────────────────────────
 
     @GetMapping("/availability")
+    @Operation(summary = "Disponibilità settimanale del professionista corrente")
     public List<AvailabilityResponse> getAvailability(Authentication auth) {
         return portalService.getMyAvailability(
                 authHelper.getProfessionalId(auth),
@@ -161,6 +167,7 @@ public class ProfessionalPortalController {
     }
 
     @PutMapping("/availability")
+    @Operation(summary = "Imposta disponibilità settimanale (rimpiazza tutte le fasce orarie)")
     public List<AvailabilityResponse> setAvailability(@RequestBody @Valid List<AvailabilitySlotRequest> slots,
                                                        Authentication auth) {
         return portalService.setMyAvailability(

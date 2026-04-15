@@ -24,6 +24,7 @@ import java.util.UUID;
 public class TeamInvitationService implements ITeamInvitationService {
 
     private static final int EXPIRATION_DAYS = 7;
+    private static final String host = "prenota24.com";
 
     private final TeamInvitationRepository invitationRepository;
     private final ProfessionalRepository professionalRepository;
@@ -113,7 +114,7 @@ public class TeamInvitationService implements ITeamInvitationService {
                 pro.getFirstName() + " " + pro.getLastName(),
                 inv.getEmail(),
                 inv.getStatus().name(),
-                "/invito/" + inv.getToken(),
+                host + "/invito/" + inv.getToken(),
                 inv.getExpiresAt(),
                 inv.getCreatedAt()
         );
