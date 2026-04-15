@@ -82,10 +82,10 @@ public class AuthService {
         }
 
         // Generate unique slug from studio name
-        var studioSlug = generateStudioSlug(request.name());
+        var studioSlug = generateStudioSlug(request.studioName());
 
         var studio = Studio.builder()
-                .name(request.name())
+                .name(request.studioName())
                 .slug(studioSlug)
                 .build();
         studio = studioRepository.save(studio);
