@@ -1,19 +1,22 @@
 package com.prenota24.backend.auth;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.text.Normalizer;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Pattern;
 
 import javax.crypto.SecretKey;
 
+import com.prenota24.backend.common.EmailAlreadyRegisteredException;
+import com.prenota24.backend.common.EmailNotVerifiedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -21,21 +24,23 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.config.JwtProperties;
 import com.prenota24.backend.domain.AppUser;
 import com.prenota24.backend.domain.InvitationStatus;
+import com.prenota24.backend.domain.RefreshToken;
 import com.prenota24.backend.domain.Studio;
 import com.prenota24.backend.domain.UserRole;
 import com.prenota24.backend.dto.AcceptInvitationRequest;
 import com.prenota24.backend.dto.AuthUserResponse;
 import com.prenota24.backend.dto.LoginRequest;
 import com.prenota24.backend.dto.LoginResponse;
+import com.prenota24.backend.dto.RefreshTokenRequest;
 import com.prenota24.backend.dto.RegisterRequest;
 import com.prenota24.backend.dto.RegisterResponse;
 import com.prenota24.backend.dto.ResendVerificationRequest;
 import com.prenota24.backend.dto.VerifyEmailRequest;
 import com.prenota24.backend.repository.AppUserRepository;
+import com.prenota24.backend.repository.RefreshTokenRepository;
 import com.prenota24.backend.repository.StudioRepository;
 import com.prenota24.backend.repository.TeamInvitationRepository;
 
@@ -52,10 +57,12 @@ public class AuthService {
     private final AppUserRepository appUserRepository;
     private final StudioRepository studioRepository;
     private final TeamInvitationRepository teamInvitationRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JavaMailSender mailSender;
     private final SecretKey key;
-    private final int expirationHours;
+    private final int accessTokenMinutes;
+    private final int refreshTokenDays;
 
     @Value("${spring.mail.properties.mail.from:noreply@prenota24.com}")
     private String mailFrom;
@@ -63,47 +70,87 @@ public class AuthService {
     public AuthService(AppUserRepository appUserRepository,
                        StudioRepository studioRepository,
                        TeamInvitationRepository teamInvitationRepository,
+                       RefreshTokenRepository refreshTokenRepository,
                        PasswordEncoder passwordEncoder,
                        JavaMailSender mailSender,
                        JwtProperties jwtProperties) {
         this.appUserRepository = appUserRepository;
         this.studioRepository = studioRepository;
         this.teamInvitationRepository = teamInvitationRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.mailSender = mailSender;
         this.key = Keys.hmacShaKeyFor(jwtProperties.secret().getBytes(StandardCharsets.UTF_8));
-        this.expirationHours = jwtProperties.expirationHours();
+        this.accessTokenMinutes = jwtProperties.accessTokenMinutes();
+        this.refreshTokenDays = jwtProperties.refreshTokenDays();
     }
 
+    // ── Login ──────────────────────────────────────────────────────
+
+    @Transactional
     public LoginResponse login(LoginRequest request) {
         var user = appUserRepository.findByEmail(request.email())
-                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+                .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
 
         if (!user.isActive()) {
-            throw new RuntimeException("User is inactive");
+            throw new BadCredentialsException("Invalid credentials");
         }
 
         if (!user.isEmailVerified()) {
-            throw new RuntimeException("Email non verificata. Controlla la tua casella di posta.");
+            throw new EmailNotVerifiedException("Email non verificata. Controlla la tua casella di posta.");
         }
 
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new BadCredentialsException("Invalid credentials");
         }
 
-        var token = generateToken(user.getId().toString(), user.getRole().toString());
-        var authUser = toAuthUserResponse(user);
-
-        return new LoginResponse(token, authUser);
+        logger.info("User logged in: {}", user.getEmail());
+        return buildLoginResponse(user);
     }
+
+    // ── Register ───────────────────────────────────────────────────
+
+    private static final int UNVERIFIED_EXPIRY_MINUTES = 30;
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
-        if (appUserRepository.findByEmail(request.email()).isPresent()) {
-            throw new RuntimeException("Email già registrata");
+        Optional<AppUser> existingUser = appUserRepository.findByEmail(request.email());
+
+        if (existingUser.isPresent()) {
+            AppUser existing = existingUser.get();
+
+            if (existing.isEmailVerified()) {
+                throw new EmailAlreadyRegisteredException("Email già registrata");
+            }
+
+            Instant expiryThreshold = Instant.now().minus(UNVERIFIED_EXPIRY_MINUTES, ChronoUnit.MINUTES);
+
+            if (existing.getCreatedAt().isAfter(expiryThreshold)) {
+                // Within 30 min: update data and resend verification code
+                existing.setName(request.name());
+                existing.setPasswordHash(passwordEncoder.encode(request.password()));
+                existing.getStudio().setName(request.studioName());
+
+                String code = generateVerificationCode();
+                existing.setVerificationCode(code);
+                existing.setVerificationCodeExpiresAt(Instant.now().plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
+                appUserRepository.save(existing);
+                sendVerificationEmail(existing.getEmail(), existing.getName(), code);
+
+                logger.info("Registration retry: new code sent to {}", existing.getEmail());
+                return new RegisterResponse(existing.getEmail(),
+                        "Codice di verifica reinviato. Controlla la tua email.");
+            }
+
+            // Expired (>30 min): delete stale unverified user and studio, then re-register
+            Studio oldStudio = existing.getStudio();
+            appUserRepository.delete(existing);
+            studioRepository.delete(oldStudio);
+            appUserRepository.flush();
+            logger.info("Expired unverified user removed: {}", request.email());
         }
 
-        // Generate unique slug from studio name
+        // Fresh registration
         var studioSlug = generateStudioSlug(request.studioName());
 
         var studio = Studio.builder()
@@ -119,37 +166,39 @@ public class AuthService {
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .role(UserRole.ADMIN)
                 .active(true)
-                .emailVerified(false)
                 .build();
+        user = appUserRepository.save(user);
 
+        // Generate and send verification code
         String code = generateVerificationCode();
         user.setVerificationCode(code);
         user.setVerificationCodeExpiresAt(Instant.now().plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
-        user = appUserRepository.save(user);
-
+        appUserRepository.save(user);
         sendVerificationEmail(user.getEmail(), user.getName(), code);
 
-        return new RegisterResponse(user.getEmail(), "Codice di verifica inviato a " + user.getEmail());
+        logger.info("New studio registered: {} ({})", studio.getName(), user.getEmail());
+        return new RegisterResponse(user.getEmail(), "Registrazione completata. Controlla la tua email per il codice di verifica.");
     }
 
-    // ── Email Verification ─────────────────────────────────────────
+    // ── Email verification ─────────────────────────────────────────
 
     @Transactional
     public LoginResponse verifyEmail(VerifyEmailRequest request) {
         var user = appUserRepository.findByEmail(request.email())
-                .orElseThrow(() -> new EntityNotFoundException("Utente non trovato"));
+                .orElseThrow(() -> new RuntimeException("Utente non trovato"));
 
         if (user.isEmailVerified()) {
             throw new RuntimeException("Email già verificata");
         }
 
         if (user.getVerificationCode() == null ||
-                !user.getVerificationCode().equals(request.code())) {
+            !user.getVerificationCode().equals(request.code())) {
             throw new RuntimeException("Codice non valido");
         }
 
-        if (user.getVerificationCodeExpiresAt().isBefore(Instant.now())) {
-            throw new RuntimeException("Il codice è scaduto. Richiedi un nuovo codice.");
+        if (user.getVerificationCodeExpiresAt() != null &&
+            user.getVerificationCodeExpiresAt().isBefore(Instant.now())) {
+            throw new RuntimeException("Codice scaduto. Richiedi un nuovo codice.");
         }
 
         user.setEmailVerified(true);
@@ -157,15 +206,14 @@ public class AuthService {
         user.setVerificationCodeExpiresAt(null);
         appUserRepository.save(user);
 
-        var token = generateToken(user.getId().toString(), user.getRole().toString());
-        var authUser = toAuthUserResponse(user);
-        return new LoginResponse(token, authUser);
+        logger.info("Email verified for user: {}", user.getEmail());
+        return buildLoginResponse(user);
     }
 
     @Transactional
     public void resendVerificationCode(ResendVerificationRequest request) {
         var user = appUserRepository.findByEmail(request.email())
-                .orElseThrow(() -> new EntityNotFoundException("Utente non trovato"));
+                .orElseThrow(() -> new RuntimeException("Utente non trovato"));
 
         if (user.isEmailVerified()) {
             throw new RuntimeException("Email già verificata");
@@ -175,8 +223,9 @@ public class AuthService {
         user.setVerificationCode(code);
         user.setVerificationCodeExpiresAt(Instant.now().plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
         appUserRepository.save(user);
-
         sendVerificationEmail(user.getEmail(), user.getName(), code);
+
+        logger.info("Verification code resent to: {}", user.getEmail());
     }
 
     // ── Accept Invitation ──────────────────────────────────────────
@@ -196,12 +245,10 @@ public class AuthService {
             throw new RuntimeException("Questo invito è scaduto");
         }
 
-        // Check if email is already registered
         if (appUserRepository.findByEmail(invitation.getEmail()).isPresent()) {
             throw new RuntimeException("Email già registrata");
         }
 
-        // Create AppUser linked to the professional and studio
         var user = AppUser.builder()
                 .studio(invitation.getStudio())
                 .email(invitation.getEmail())
@@ -214,18 +261,63 @@ public class AuthService {
                 .build();
         user = appUserRepository.save(user);
 
-        // Mark invitation as accepted
         invitation.setStatus(InvitationStatus.ACCEPTED);
         invitation.setAcceptedAt(Instant.now());
         teamInvitationRepository.save(invitation);
 
-        var token = generateToken(user.getId().toString(), user.getRole().toString());
-        var authUser = toAuthUserResponse(user);
-
-        return new LoginResponse(token, authUser);
+        logger.info("Invitation accepted by: {}", user.getEmail());
+        return buildLoginResponse(user);
     }
 
-    // ────────────────────────────────────────────────────────────────
+    // ── Refresh token rotation ─────────────────────────────────────
+
+    @Transactional
+    public LoginResponse refreshToken(RefreshTokenRequest request) {
+        String tokenHash = sha256(request.refreshToken());
+
+        var storedToken = refreshTokenRepository.findByTokenHash(tokenHash)
+                .orElseThrow(() -> new BadCredentialsException("Invalid refresh token"));
+
+        if (storedToken.isRevoked()) {
+            // Possible token reuse attack: revoke ALL tokens for this user
+            refreshTokenRepository.revokeAllByUserId(storedToken.getUser().getId());
+            logger.warn("Refresh token reuse detected for user {}", storedToken.getUser().getEmail());
+            throw new BadCredentialsException("Invalid refresh token");
+        }
+
+        if (storedToken.isExpired()) {
+            throw new BadCredentialsException("Refresh token expired");
+        }
+
+        // Rotate: revoke old, issue new
+        storedToken.setRevoked(true);
+        refreshTokenRepository.save(storedToken);
+
+        var user = storedToken.getUser();
+        if (!user.isActive()) {
+            throw new BadCredentialsException("Invalid refresh token");
+        }
+
+        return buildLoginResponse(user);
+    }
+
+    // ── Logout (revoke all refresh tokens) ─────────────────────────
+
+    @Transactional
+    public void logout(UUID userId) {
+        refreshTokenRepository.revokeAllByUserId(userId);
+        logger.info("All refresh tokens revoked for user {}", userId);
+    }
+
+    // ── Internal helpers ───────────────────────────────────────────
+
+    private LoginResponse buildLoginResponse(AppUser user) {
+        var accessToken = generateAccessToken(user.getId().toString(), user.getRole().toString());
+        var refreshTokenValue = generateRefreshTokenValue();
+        storeRefreshToken(user, refreshTokenValue);
+        var authUser = toAuthUserResponse(user);
+        return new LoginResponse(accessToken, refreshTokenValue, authUser);
+    }
 
     private AuthUserResponse toAuthUserResponse(AppUser user) {
         UUID professionalId = user.getProfessional() != null
@@ -242,17 +334,42 @@ public class AuthService {
         );
     }
 
-    private String generateToken(String userId, String role) {
+    private String generateAccessToken(String userId, String role) {
         Instant now = Instant.now();
-        Instant expirationTime = now.plus(expirationHours, ChronoUnit.HOURS);
-
         return Jwts.builder()
                 .subject(userId)
                 .claim("role", role)
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(expirationTime))
+                .expiration(Date.from(now.plus(accessTokenMinutes, ChronoUnit.MINUTES)))
                 .signWith(key)
                 .compact();
+    }
+
+    private String generateRefreshTokenValue() {
+        byte[] bytes = new byte[32];
+        RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private void storeRefreshToken(AppUser user, String rawToken) {
+        var entity = RefreshToken.builder()
+                .tokenHash(sha256(rawToken))
+                .user(user)
+                .expiresAt(Instant.now().plus(refreshTokenDays, ChronoUnit.DAYS))
+                .revoked(false)
+                .createdAt(Instant.now())
+                .build();
+        refreshTokenRepository.save(entity);
+    }
+
+    private static String sha256(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (Exception e) {
+            throw new RuntimeException("SHA-256 not available", e);
+        }
     }
 
     // ── Studio slug generation ──────────────────────────────────────
@@ -263,8 +380,6 @@ public class AuthService {
             base = "studio";
         }
         String slug = base;
-
-        // Guarantee uniqueness
         int counter = 0;
         while (studioRepository.findBySlug(slug).isPresent()) {
             counter++;
@@ -308,8 +423,8 @@ public class AuthService {
             );
             mailSender.send(message);
             logger.info("Verification email sent to {}", email);
-        } catch (Exception e) {
-            logger.error("Failed to send verification email to {}: {}", email, e.getMessage());
+        } catch (MailException e) {
+            throw new RuntimeException("Failed to send verification email", e);
         }
     }
 }

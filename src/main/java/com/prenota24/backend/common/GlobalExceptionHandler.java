@@ -24,6 +24,34 @@ public class GlobalExceptionHandler {
 
     /* ---------- AUTH ---------- */
 
+    @ExceptionHandler(EmailAlreadyRegisteredException.class)
+    public  ResponseEntity<ErrorResponse> handleEmailAlreadyRegistered(
+            EmailAlreadyRegisteredException ex,
+            HttpServletRequest request
+    ){
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "EMAIL_ALREADY_REGISTERED",
+                        "Email già registrata, si prega di modificare l'email",
+                        request.getRequestURI()
+                ));
+    }
+
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public  ResponseEntity<ErrorResponse> handleEmailNotVerified(
+            EmailNotVerifiedException ex,
+            HttpServletRequest request
+    ){
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse.of(
+                        HttpStatus.FORBIDDEN.value(),
+                        "EMAIL_NOT_VERIFIED",
+                        "Email non verificata, si prega di verificare l'email",
+                        request.getRequestURI()
+                ));
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleBadCredentials(
             BadCredentialsException ex,

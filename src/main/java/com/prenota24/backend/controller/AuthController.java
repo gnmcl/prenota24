@@ -9,7 +9,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -22,7 +25,7 @@ public class AuthController {
 
     @PostMapping("/login")
     @ResponseStatus(HttpStatus.OK)
-    @Operation(summary = "Login", description = "Autentica con email e password, restituisce JWT")
+    @Operation(summary = "Login", description = "Autentica con email e password, restituisce JWT + refresh token")
     @ApiResponse(responseCode = "200", description = "Login riuscito")
     @ApiResponse(responseCode = "401", description = "Credenziali non valide")
     public LoginResponse login(@RequestBody @Valid LoginRequest request) {
@@ -52,6 +55,26 @@ public class AuthController {
     @ApiResponse(responseCode = "200", description = "Codice reinviato")
     public void resendVerification(@RequestBody @Valid ResendVerificationRequest request) {
         authService.resendVerificationCode(request);
+    }
+
+    @PostMapping("/refresh")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Refresh token", description = "Ruota il refresh token e restituisce nuovo access + refresh token")
+    @ApiResponse(responseCode = "200", description = "Token rinnovati")
+    @ApiResponse(responseCode = "401", description = "Refresh token non valido o scaduto")
+    public LoginResponse refresh(@RequestBody @Valid RefreshTokenRequest request) {
+        return authService.refreshToken(request);
+    }
+
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Logout", description = "Revoca tutti i refresh token dell'utente")
+    @ApiResponse(responseCode = "204", description = "Logout completato")
+    public void logout() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof String userId) {
+            authService.logout(UUID.fromString(userId));
+        }
     }
 
     @PostMapping("/accept-invitation")

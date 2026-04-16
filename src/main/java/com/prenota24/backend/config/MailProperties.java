@@ -5,10 +5,11 @@ import jakarta.validation.constraints.Positive;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
-@ConfigurationProperties(prefix = "jwt")
+@ConfigurationProperties(prefix = "spring.mail")
 @Validated
-public record JwtProperties(
-        @NotBlank String secret,
-        @Positive int accessTokenMinutes,
-        @Positive int refreshTokenDays
+public record MailProperties(
+        @NotBlank String host,
+        @Positive int port,
+        @NotBlank String username,
+        @NotBlank String password
 ) {}

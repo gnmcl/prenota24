@@ -1,0 +1,46 @@
+# ── DEV profile ──────────────────────────────────────────
+# Fallback values for local development only.
+# Run with: SPRING_PROFILES_ACTIVE=dev
+
+spring:
+  application:
+    name: prenota24
+  datasource:
+    url: jdbc:postgresql://localhost:5433/prenota24
+    username: prenota24
+    password: prenota24
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  mail:
+    host: smtps.aruba.it
+    port: 465
+    username: dev@prenota24.com
+    password: changeme
+    properties:
+      mail:
+        from: dev@prenota24.com
+
+jwt:
+  secret: dev-only-secret-change-in-production-min-32-chars!!
+  access-token-minutes: 60
+  refresh-token-days: 30
+
+app:
+  cors:
+    allowed-origins: http://localhost:4200,http://localhost:3000
+
+logging:
+  level:
+    com.prenota24: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+
+springdoc:
+  swagger-ui:
+    enabled: true
