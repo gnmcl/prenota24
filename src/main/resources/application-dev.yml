@@ -18,10 +18,10 @@ spring:
         format_sql: true
 
   mail:
-    host: smtps.aruba.it
-    port: 465
-    username: dev@prenota24.com
-    password: changeme
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
     properties:
       mail:
         from: dev@prenota24.com

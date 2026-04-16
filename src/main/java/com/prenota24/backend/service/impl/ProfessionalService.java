@@ -58,6 +58,7 @@ public class ProfessionalService implements IProfessionalService {
     public List<ProfessionalResponse> getByStudio(UUID studioId) {
         return professionalRepository.findByStudioIdOrderByLastNameAsc(studioId)
                 .stream()
+                .filter(Professional::isActive)
                 .map(this::toResponse)
                 .toList();
     }
