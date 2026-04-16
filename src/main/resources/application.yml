@@ -3,8 +3,8 @@ spring:
     name: prenota24
   datasource:
     url: ${DB_URL:jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true&prepareThreshold=0}
-    username: ${DB_USERNAME:postgres.wrvqowbpalfzxlmutiqq}
-    password: ${DB_PASSWORD:Prenota24!!!}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 5
       minimum-idle: 2
@@ -24,17 +24,17 @@ spring:
     enabled: true
 
   mail:
-    host: ${MAIL_HOST:smtps.aruba.it}
-    port: ${MAIL_PORT:465}
-    username: ${MAIL_USERNAME:postmaster@prenota24.com}
-    password: ${MAIL_PASSWORD:Gnmcl012025!}
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
     properties:
       mail:
         smtp:
           auth: true
           ssl:
             enable: true
-        from: ${MAIL_FROM:postmaster@prenota24.com}
+        from: ${MAIL_FROM:noreply@prenota24.com}
 
   task:
     execution:
@@ -43,5 +43,5 @@ spring:
         max-size: 16
 
 jwt:
-  secret: ${JWT_SECRET:dev-only-secret-change-in-production-min-32-chars!!}
+  secret: ${JWT_SECRET}
   expiration-hours: ${JWT_EXPIRATION_HOURS:24}
