@@ -16,6 +16,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          time_zone: UTC
 
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}

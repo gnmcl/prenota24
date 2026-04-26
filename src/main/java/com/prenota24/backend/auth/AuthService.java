@@ -64,7 +64,7 @@ public class AuthService {
     private final int accessTokenMinutes;
     private final int refreshTokenDays;
 
-    @Value("${spring.mail.properties.mail.from:noreply@prenota24.com}")
+    @Value("${spring.mail.username}")
     private String mailFrom;
 
     public AuthService(AppUserRepository appUserRepository,
