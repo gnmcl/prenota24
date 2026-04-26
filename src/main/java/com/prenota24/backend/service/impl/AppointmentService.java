@@ -112,6 +112,35 @@ public class AppointmentService implements IAppointmentService {
             appointment.setServiceType(serviceType);
         }
 
+        if (request.professionalId() != null) {
+            var professional = professionalRepository.findByIdAndStudioId(request.professionalId(), studioId)
+                    .orElseThrow(() -> new EntityNotFoundException("Professionista non trovato"));
+            appointment.setProfessional(professional);
+        }
+
+        // Handle reschedule
+        if (request.startDatetime() != null && request.endDatetime() != null) {
+            if (request.endDatetime().isBefore(request.startDatetime()) ||
+                    request.endDatetime().equals(request.startDatetime())) {
+                throw new IllegalArgumentException("L'orario di fine deve essere successivo a quello di inizio");
+            }
+
+            // Check for overlapping appointments (excluding this one)
+            long conflicts = appointmentRepository.countConflictingAppointments(
+                    appointment.getProfessional().getId(),
+                    request.startDatetime(),
+                    request.endDatetime(),
+                    appointment.getId()
+            );
+
+            if (conflicts > 0) {
+                throw new SlotNotAvailableException("L'orario scelto si sovrappone con un altro appuntamento");
+            }
+
+            appointment.setStartDatetime(request.startDatetime());
+            appointment.setEndDatetime(request.endDatetime());
+        }
+
         appointment = appointmentRepository.save(appointment);
         return toResponse(appointment);
     }
