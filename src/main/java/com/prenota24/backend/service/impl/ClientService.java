@@ -123,7 +123,7 @@ public class ClientService implements IClientService {
                 .studio(client.getStudio())
                 .author(author)
                 .content(request.content())
-                .pinned(request.pinned());
+                .pinned(Boolean.TRUE.equals(request.pinned()));
 
         if (request.appointmentId() != null) {
             var appointment = appointmentRepository.findByIdAndStudioId(request.appointmentId(), studioId)

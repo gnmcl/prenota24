@@ -7,5 +7,5 @@ import java.util.UUID;
 public record CreateClientNoteRequest(
         @NotBlank String content,
         UUID appointmentId,
-        boolean pinned
+        Boolean pinned
 ) {}
