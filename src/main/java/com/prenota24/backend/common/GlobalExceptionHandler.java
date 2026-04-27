@@ -136,9 +136,9 @@ public class GlobalExceptionHandler {
             IllegalStateTransitionException ex,
             HttpServletRequest request
     ) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
                 .body(ErrorResponse.of(
-                        HttpStatus.UNPROCESSABLE_ENTITY.value(),
+                        HttpStatus.UNPROCESSABLE_CONTENT.value(),
                         "INVALID_STATE_TRANSITION",
                         ex.getMessage(),
                         request.getRequestURI()
