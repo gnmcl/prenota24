@@ -1,6 +1,7 @@
 package com.prenota24.backend.service.impl;
 
 import com.prenota24.backend.domain.AppointmentStatus;
+import com.prenota24.backend.domain.AvailabilityExceptionSlot;
 import com.prenota24.backend.domain.Studio;
 import com.prenota24.backend.dto.TimeSlotResponse;
 import com.prenota24.backend.repository.AppointmentRepository;
@@ -39,32 +40,26 @@ public class SlotCalculatorService {
         }
 
         // 2. Check exceptions for this specific date
+        List<AvailabilityExceptionSlot> unavailableSlots = List.of();
+
         var exceptionOpt = exceptionRepository.findByProfessionalIdAndDate(professionalId, date);
-
-        LocalTime workStart;
-        LocalTime workEnd;
-
         if (exceptionOpt.isPresent()) {
             var exception = exceptionOpt.get();
-            if (exception.isUnavailable()) {
-                return List.of(); // Completely unavailable this day
+            if (exception.isUnavailableAllDay()) {
+                return List.of(); // Giornata intera non disponibile
             }
-            // Use custom hours from exception
-            workStart = exception.getStartTime();
-            workEnd = exception.getEndTime();
-        } else {
-            // Use regular availability (take first slot — can be extended to support multiple)
-            var availability = availabilities.getFirst();
-            workStart = availability.getStartTime();
-            workEnd = availability.getEndTime();
+            // Salvo le finestre di indisponibilità — verranno usate come filtro sotto
+            unavailableSlots = exception.getSlots();
         }
+
+        // workStart/workEnd vengono SEMPRE dall'orario ricorrente (le eccezioni non lo sostituiscono più)
+        var availability = availabilities.getFirst();
+        LocalTime workStart = availability.getStartTime();
+        LocalTime workEnd = availability.getEndTime();
 
         // 3. Get existing appointments for this professional on this date
         Instant dayStart = date.atStartOfDay(zone).toInstant();
         Instant dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant();
-
-        // Use a nil UUID as excludeId since we're not excluding any appointment
-        UUID nilId = new UUID(0, 0);
 
         // Get all conflicting appointments for the entire day
         var existingAppointments = appointmentRepository.findByStudioId(
@@ -87,12 +82,19 @@ public class SlotCalculatorService {
             Instant slotStart = date.atTime(cursor).atZone(zone).toInstant();
             Instant slotEnd = slotStart.plus(slotDuration);
 
-            // Check if this slot overlaps with any existing appointment
+            // Check conflitto con appuntamenti esistenti
             boolean hasConflict = existingAppointments.stream().anyMatch(a ->
                     a.getStartDatetime().isBefore(slotEnd) && a.getEndDatetime().isAfter(slotStart)
             );
 
-            if (!hasConflict) {
+            // Check sovrapposizione con finestre di indisponibilità (eccezioni)
+            boolean isUnavailable = unavailableSlots.stream().anyMatch(u -> {
+                Instant unavailStart = date.atTime(u.getStartTime()).atZone(zone).toInstant();
+                Instant unavailEnd = date.atTime(u.getEndTime()).atZone(zone).toInstant();
+                return slotStart.isBefore(unavailEnd) && slotEnd.isAfter(unavailStart);
+            });
+
+            if (!hasConflict && !isUnavailable) {
                 slots.add(new TimeSlotResponse(slotStart, slotEnd));
             }
 

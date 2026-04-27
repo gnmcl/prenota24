@@ -3,8 +3,10 @@ package com.prenota24.backend.service.impl;
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.domain.Availability;
 import com.prenota24.backend.domain.AvailabilityException;
+import com.prenota24.backend.domain.AvailabilityExceptionSlot;
 import com.prenota24.backend.domain.Professional;
 import com.prenota24.backend.dto.*;
+import com.prenota24.backend.dto.AvailabilityExceptionSlotResponse;
 import com.prenota24.backend.repository.AvailabilityExceptionRepository;
 import com.prenota24.backend.repository.AvailabilityRepository;
 import com.prenota24.backend.repository.ProfessionalRepository;
@@ -141,14 +143,29 @@ public class ProfessionalService implements IProfessionalService {
                                                        UUID studioId) {
         var professional = findByIdAndStudio(professionalId, studioId);
 
+        if (!request.isUnavailableAllDay() &&
+                (request.slots() == null || request.slots().isEmpty())) {
+            throw new IllegalArgumentException(
+                    "Se il giorno non è interamente non disponibile, deve essere specificato almeno uno slot");
+        }
+
         var exception = AvailabilityException.builder()
                 .professional(professional)
                 .date(request.date())
-                .isUnavailable(request.isUnavailable())
-                .startTime(request.startTime())
-                .endTime(request.endTime())
+                .isUnavailableAllDay(request.isUnavailableAllDay())
                 .reason(request.reason())
                 .build();
+
+        if (!request.isUnavailableAllDay() && request.slots() != null) {
+            for (var slotRequest : request.slots()) {
+                var slot = AvailabilityExceptionSlot.builder()
+                        .availabilityException(exception)
+                        .startTime(slotRequest.startTime())
+                        .endTime(slotRequest.endTime())
+                        .build();
+                exception.getSlots().add(slot);
+            }
+        }
 
         exception = exceptionRepository.save(exception);
         return toExceptionResponse(exception);
@@ -203,8 +220,11 @@ public class ProfessionalService implements IProfessionalService {
     }
 
     private AvailabilityExceptionResponse toExceptionResponse(AvailabilityException e) {
+        var slotResponses = e.getSlots().stream()
+                .map(s -> new AvailabilityExceptionSlotResponse(s.getId(), s.getStartTime(), s.getEndTime()))
+                .toList();
         return new AvailabilityExceptionResponse(
-                e.getId(), e.getDate(), e.isUnavailable(), e.getStartTime(), e.getEndTime(), e.getReason()
+                e.getId(), e.getDate(), slotResponses, e.isUnavailableAllDay(), e.getReason()
         );
     }
 }
