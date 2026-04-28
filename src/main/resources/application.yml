@@ -60,3 +60,8 @@ server:
   error:
     include-stacktrace: never
     include-message: never
+
+logging:
+  level:
+    root: INFO
+

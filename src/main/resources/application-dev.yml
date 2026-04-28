@@ -39,9 +39,13 @@ app:
 
 logging:
   level:
+    root: INFO
     com.prenota24: DEBUG
     org.springframework.security: DEBUG
+    org.springframework.web.servlet.DispatcherServlet: DEBUG
+    org.springframework.transaction.interceptor: DEBUG
     org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE        # valori dei parametri nelle query SQL
 
 springdoc:
   swagger-ui:
