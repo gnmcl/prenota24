@@ -6,13 +6,15 @@ import java.security.SecureRandom;
 import java.text.Normalizer;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.Base64;
+import java.util.Date;
+import java.util.HexFormat;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 import javax.crypto.SecretKey;
 
-import com.prenota24.backend.common.EmailAlreadyRegisteredException;
-import com.prenota24.backend.common.EmailNotVerifiedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,6 +26,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.prenota24.backend.common.EmailAlreadyRegisteredException;
+import com.prenota24.backend.common.EmailNotVerifiedException;
+import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.config.JwtProperties;
 import com.prenota24.backend.domain.AppUser;
 import com.prenota24.backend.domain.InvitationStatus;
@@ -32,6 +37,8 @@ import com.prenota24.backend.domain.Studio;
 import com.prenota24.backend.domain.UserRole;
 import com.prenota24.backend.dto.AcceptInvitationRequest;
 import com.prenota24.backend.dto.AuthUserResponse;
+import com.prenota24.backend.dto.ChangeEmailRequest;
+import com.prenota24.backend.dto.ChangePasswordRequest;
 import com.prenota24.backend.dto.LoginRequest;
 import com.prenota24.backend.dto.LoginResponse;
 import com.prenota24.backend.dto.RefreshTokenRequest;
@@ -307,6 +314,46 @@ public class AuthService {
     public void logout(UUID userId) {
         refreshTokenRepository.revokeAllByUserId(userId);
         logger.info("All refresh tokens revoked for user {}", userId);
+    }
+
+    // ── Account settings ───────────────────────────────────────────
+
+    @Transactional
+    public void changePassword(UUID userId, ChangePasswordRequest request) {
+        var user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("Utente non trovato"));
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new BadCredentialsException("Password attuale non corretta");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        appUserRepository.save(user);
+
+        // Revoke all refresh tokens to force re-login on other devices
+        refreshTokenRepository.revokeAllByUserId(userId);
+        logger.info("Password changed for user {}", user.getEmail());
+    }
+
+    @Transactional
+    public AuthUserResponse changeEmail(UUID userId, ChangeEmailRequest request) {
+        var user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("Utente non trovato"));
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new BadCredentialsException("Password non corretta");
+        }
+
+        String normalizedEmail = request.newEmail().trim().toLowerCase();
+
+        if (appUserRepository.findByEmail(normalizedEmail).isPresent()) {
+            throw new EmailAlreadyRegisteredException("Email già in uso");
+        }
+
+        user.setEmail(normalizedEmail);
+        appUserRepository.save(user);
+        logger.info("Email changed for user {}: new email {}", userId, normalizedEmail);
+        return toAuthUserResponse(user);
     }
 
     // ── Internal helpers ───────────────────────────────────────────
