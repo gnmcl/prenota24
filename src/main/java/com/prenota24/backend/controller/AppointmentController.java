@@ -1,5 +1,6 @@
 package com.prenota24.backend.controller;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,13 +44,17 @@ public class AppointmentController {
     private final AuthHelper authHelper;
 
     @GetMapping
-    @Operation(summary = "Lista appuntamenti", description = "Filtra per status e/o professionalId. Paginato.")
+    @Operation(summary = "Lista appuntamenti", description = "Filtra per status, professionalId e/o intervallo di date. Paginato.")
     public Page<AppointmentResponse> list(@PageableDefault(size = 20) Pageable pageable,
                                            @Parameter(description = "Stato appuntamento (REQUESTED, CONFIRMED, CANCELLED, …)")
                                            @RequestParam(required = false) String status,
                                            @RequestParam(required = false) UUID professionalId,
+                                           @Parameter(description = "Data inizio intervallo (YYYY-MM-DD, inclusiva)")
+                                           @RequestParam(required = false) LocalDate startDate,
+                                           @Parameter(description = "Data fine intervallo (YYYY-MM-DD, inclusiva)")
+                                           @RequestParam(required = false) LocalDate endDate,
                                            Authentication auth) {
-        return appointmentService.list(authHelper.getStudioId(auth), status, professionalId, pageable);
+        return appointmentService.list(authHelper.getStudioId(auth), status, professionalId, startDate, endDate, pageable);
     }
 
     @PostMapping

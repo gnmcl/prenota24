@@ -1,5 +1,8 @@
 package com.prenota24.backend.service.impl;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -83,15 +86,35 @@ public class AppointmentService implements IAppointmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<AppointmentResponse> list(UUID studioId, String status, UUID professionalId, Pageable pageable) {
+    public Page<AppointmentResponse> list(UUID studioId, String status, UUID professionalId,
+                                          LocalDate startDate, LocalDate endDate, Pageable pageable) {
+        boolean hasStatus = status != null && !status.isBlank();
+        boolean hasProfessional = professionalId != null;
+        boolean hasDateRange = startDate != null && endDate != null;
+
+        if (hasDateRange) {
+            Instant from = startDate.atStartOfDay(ZoneOffset.UTC).toInstant();
+            Instant to = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+
+            if (hasStatus) {
+                return appointmentRepository
+                        .findByStudioIdAndStatusAndDateRange(
+                                studioId, AppointmentStatus.valueOf(status), from, to, pageable)
+                        .map(this::toResponse);
+            }
+            return appointmentRepository
+                    .findByStudioIdAndDateRange(studioId, from, to, pageable)
+                    .map(this::toResponse);
+        }
+
         Page<Appointment> page;
-        if (status != null && !status.isBlank() && professionalId != null) {
+        if (hasStatus && hasProfessional) {
             page = appointmentRepository.findByStudioIdAndStatusAndProfessionalId(
                     studioId, AppointmentStatus.valueOf(status), professionalId, pageable);
-        } else if (status != null && !status.isBlank()) {
+        } else if (hasStatus) {
             page = appointmentRepository.findByStudioIdAndStatus(
                     studioId, AppointmentStatus.valueOf(status), pageable);
-        } else if (professionalId != null) {
+        } else if (hasProfessional) {
             page = appointmentRepository.findByStudioIdAndProfessionalId(studioId, professionalId, pageable);
         } else {
             page = appointmentRepository.findByStudioId(studioId, pageable);

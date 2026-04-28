@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.LocalDate;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,6 +22,34 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
 
     @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
     Page<Appointment> findByStudioId(UUID studioId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
+    @Query("""
+            SELECT a FROM Appointment a
+            WHERE a.studio.id = :studioId
+            AND a.startDatetime >= :from
+            AND a.startDatetime < :to
+            """)
+    Page<Appointment> findByStudioIdAndDateRange(
+            @Param("studioId") UUID studioId,
+            @Param("from") Instant from,
+            @Param("to") Instant to,
+            Pageable pageable);
+
+    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
+    @Query("""
+            SELECT a FROM Appointment a
+            WHERE a.studio.id = :studioId
+            AND a.status = :status
+            AND a.startDatetime >= :from
+            AND a.startDatetime < :to
+            """)
+    Page<Appointment> findByStudioIdAndStatusAndDateRange(
+            @Param("studioId") UUID studioId,
+            @Param("status") AppointmentStatus status,
+            @Param("from") Instant from,
+            @Param("to") Instant to,
+            Pageable pageable);
 
     Optional<Appointment> findByToken(String token);
 

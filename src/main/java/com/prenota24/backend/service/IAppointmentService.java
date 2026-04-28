@@ -1,5 +1,6 @@
 package com.prenota24.backend.service;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -18,7 +19,7 @@ public interface IAppointmentService {
 
     AppointmentResponse getById(UUID id, UUID studioId);
 
-    Page<AppointmentResponse> list(UUID studioId, String status, UUID professionalId, Pageable pageable);
+    Page<AppointmentResponse> list(UUID studioId, String status, UUID professionalId, LocalDate startDate, LocalDate endDate, Pageable pageable);
 
     AppointmentResponse update(UUID id, UpdateAppointmentRequest request, UUID studioId);
 
