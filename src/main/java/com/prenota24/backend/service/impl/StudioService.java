@@ -36,6 +36,16 @@ public class StudioService implements IStudioService {
         if (request.email() != null) studio.setEmail(request.email());
         if (request.phone() != null) studio.setPhone(request.phone());
         if (request.timezone() != null) studio.setTimezone(request.timezone());
+        if (request.maxAppointmentsPerDay() != null) studio.setMaxAppointmentsPerDay(request.maxAppointmentsPerDay());
+        if (request.warningThreshold() != null) studio.setWarningThreshold(request.warningThreshold());
+        if (request.criticalThreshold() != null) studio.setCriticalThreshold(request.criticalThreshold());
+
+        // warningThreshold must be strictly less than criticalThreshold when both are set
+        Integer wt = studio.getWarningThreshold();
+        Integer ct = studio.getCriticalThreshold();
+        if (wt != null && ct != null && wt >= ct) {
+            throw new IllegalArgumentException("La soglia di avviso deve essere inferiore alla soglia critica");
+        }
 
         studio = studioRepository.save(studio);
         return toResponse(studio);
@@ -49,6 +59,15 @@ public class StudioService implements IStudioService {
     }
 
     private StudioResponse toResponse(Studio studio) {
-        return new StudioResponse(studio.getId(), studio.getName(), studio.getEmail(), studio.getPhone(), studio.getTimezone());
+        return new StudioResponse(
+                studio.getId(),
+                studio.getName(),
+                studio.getEmail(),
+                studio.getPhone(),
+                studio.getTimezone(),
+                studio.getMaxAppointmentsPerDay(),
+                studio.getWarningThreshold(),
+                studio.getCriticalThreshold()
+        );
     }
 }

@@ -1,10 +1,21 @@
 package com.prenota24.backend.domain;
 
-import jakarta.persistence.*;
-import lombok.*;
-
 import java.time.Instant;
 import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "studio")
@@ -30,6 +41,15 @@ public class Studio {
 
     @Column(unique = true, length = 100)
     private String slug;
+
+    @Column(name = "max_appointments_per_day")
+    private Integer maxAppointmentsPerDay;
+
+    @Column(name = "warning_threshold")
+    private Integer warningThreshold;
+
+    @Column(name = "critical_threshold")
+    private Integer criticalThreshold;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

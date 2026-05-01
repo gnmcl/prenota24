@@ -1,6 +1,7 @@
 package com.prenota24.backend.service;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -10,6 +11,7 @@ import com.prenota24.backend.domain.CancelledBy;
 import com.prenota24.backend.dto.AppointmentResponse;
 import com.prenota24.backend.dto.CancelAppointmentRequest;
 import com.prenota24.backend.dto.CreateAppointmentRequest;
+import com.prenota24.backend.dto.DayAppointmentCountResponse;
 import com.prenota24.backend.dto.ProposeNewTimeRequest;
 import com.prenota24.backend.dto.UpdateAppointmentRequest;
 
@@ -39,4 +41,11 @@ public interface IAppointmentService {
 
     // Public — by token
     AppointmentResponse getByToken(String token);
+
+    /**
+     * Returns the appointment count per day for the given date range, grouped in the studio's timezone.
+     * Each day in the range is present in the response (count=0 for days with no appointments).
+     * The capacityLevel reflects the studio's configured warning/critical thresholds.
+     */
+    List<DayAppointmentCountResponse> getCalendarCounts(UUID studioId, LocalDate startDate, LocalDate endDate);
 }

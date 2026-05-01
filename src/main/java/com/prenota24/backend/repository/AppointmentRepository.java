@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.time.LocalDate;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -113,4 +112,40 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
     long countTodayAppointments(@Param("professionalId") UUID professionalId,
                                 @Param("from") Instant from,
                                 @Param("to") Instant to);
+
+    /**
+     * Returns all active (REQUESTED / CONFIRMED / PROPOSED_NEW_TIME) appointments for a studio
+     * that start within the given time range.  Used by the calendar counts endpoint.
+     */
+    @Query("""
+            SELECT a FROM Appointment a
+            WHERE a.studio.id = :studioId
+            AND a.status IN (com.prenota24.backend.domain.AppointmentStatus.REQUESTED,
+                             com.prenota24.backend.domain.AppointmentStatus.CONFIRMED,
+                             com.prenota24.backend.domain.AppointmentStatus.PROPOSED_NEW_TIME)
+            AND a.startDatetime >= :from
+            AND a.startDatetime < :to
+            """)
+    List<Appointment> findActiveInRange(
+            @Param("studioId") UUID studioId,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
+    /**
+     * Returns all active appointments for a professional that overlap a single day's time window.
+     * Replaces the previous unpaged findByStudioId() approach in SlotCalculatorService.
+     */
+    @Query("""
+            SELECT a FROM Appointment a
+            WHERE a.professional.id = :professionalId
+            AND a.status IN (com.prenota24.backend.domain.AppointmentStatus.REQUESTED,
+                             com.prenota24.backend.domain.AppointmentStatus.CONFIRMED,
+                             com.prenota24.backend.domain.AppointmentStatus.PROPOSED_NEW_TIME)
+            AND a.startDatetime < :dayEnd
+            AND a.endDatetime > :dayStart
+            """)
+    List<Appointment> findActiveForProfessionalInRange(
+            @Param("professionalId") UUID professionalId,
+            @Param("dayStart") Instant dayStart,
+            @Param("dayEnd") Instant dayEnd);
 }

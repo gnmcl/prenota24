@@ -2,8 +2,13 @@ package com.prenota24.backend.service.impl;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -14,11 +19,14 @@ import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.common.SlotNotAvailableException;
 import com.prenota24.backend.domain.Appointment;
 import com.prenota24.backend.domain.AppointmentAction;
+import com.prenota24.backend.domain.AppointmentCapacityLevel;
 import com.prenota24.backend.domain.AppointmentStatus;
 import com.prenota24.backend.domain.CancelledBy;
+import com.prenota24.backend.domain.Studio;
 import com.prenota24.backend.dto.AppointmentResponse;
 import com.prenota24.backend.dto.CancelAppointmentRequest;
 import com.prenota24.backend.dto.CreateAppointmentRequest;
+import com.prenota24.backend.dto.DayAppointmentCountResponse;
 import com.prenota24.backend.dto.ProposeNewTimeRequest;
 import com.prenota24.backend.dto.UpdateAppointmentRequest;
 import com.prenota24.backend.repository.AppointmentRepository;
@@ -263,6 +271,35 @@ public class AppointmentService implements IAppointmentService {
         return toResponse(findByToken(token));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<DayAppointmentCountResponse> getCalendarCounts(UUID studioId, LocalDate startDate, LocalDate endDate) {
+        if (ChronoUnit.DAYS.between(startDate, endDate) > 366) {
+            throw new IllegalArgumentException("Il range massimo per il calendario è di 366 giorni");
+        }
+
+        var studio = studioRepository.findById(studioId)
+                .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
+
+        ZoneId zone = ZoneId.of(studio.getTimezone() != null ? studio.getTimezone() : "Europe/Rome");
+        Instant from = startDate.atStartOfDay(zone).toInstant();
+        Instant to = endDate.plusDays(1).atStartOfDay(zone).toInstant();
+
+        Map<LocalDate, Long> countsMap = appointmentRepository.findActiveInRange(studioId, from, to)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        a -> a.getStartDatetime().atZone(zone).toLocalDate(),
+                        Collectors.counting()
+                ));
+
+        return startDate.datesUntil(endDate.plusDays(1))
+                .map(date -> {
+                    long count = countsMap.getOrDefault(date, 0L);
+                    return new DayAppointmentCountResponse(date, count, computeCapacityLevel(count, studio));
+                })
+                .toList();
+    }
+
     // ── Helpers ──────────────────────────────────────
 
     private Appointment findByIdAndStudio(UUID id, UUID studioId) {
@@ -273,6 +310,19 @@ public class AppointmentService implements IAppointmentService {
     private Appointment findByToken(String token) {
         return appointmentRepository.findByToken(token)
                 .orElseThrow(() -> new EntityNotFoundException("Appuntamento non trovato"));
+    }
+
+    private AppointmentCapacityLevel computeCapacityLevel(long count, Studio studio) {
+        if (studio.getMaxAppointmentsPerDay() == null) {
+            return AppointmentCapacityLevel.AVAILABLE;
+        }
+        if (studio.getCriticalThreshold() != null && count >= studio.getCriticalThreshold()) {
+            return AppointmentCapacityLevel.CRITICAL;
+        }
+        if (studio.getWarningThreshold() != null && count >= studio.getWarningThreshold()) {
+            return AppointmentCapacityLevel.WARNING;
+        }
+        return AppointmentCapacityLevel.AVAILABLE;
     }
 
     private AppointmentResponse toResponse(Appointment a) {

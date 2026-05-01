@@ -3,10 +3,6 @@ package com.prenota24.backend.controller;
 import java.time.LocalDate;
 import java.util.UUID;
 
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -27,12 +23,19 @@ import com.prenota24.backend.domain.CancelledBy;
 import com.prenota24.backend.dto.AppointmentResponse;
 import com.prenota24.backend.dto.CancelAppointmentRequest;
 import com.prenota24.backend.dto.CreateAppointmentRequest;
+import com.prenota24.backend.dto.DayAppointmentCountResponse;
 import com.prenota24.backend.dto.ProposeNewTimeRequest;
 import com.prenota24.backend.dto.UpdateAppointmentRequest;
 import com.prenota24.backend.service.IAppointmentService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/appointments")
@@ -105,6 +108,19 @@ public class AppointmentController {
     @Operation(summary = "Segna come no-show", description = "Transizione: CONFIRMED → NO_SHOW")
     public AppointmentResponse noShow(@PathVariable UUID id, Authentication auth) {
         return appointmentService.noShow(id, authHelper.getStudioId(auth));
+    }
+
+    @GetMapping("/calendar/counts")
+    @Operation(summary = "Conteggio appuntamenti per giorno (vista calendario)",
+            description = "Ritorna il numero di appuntamenti attivi per ogni giorno nell'intervallo specificato, " +
+                    "con il livello di capacità (AVAILABLE / WARNING / CRITICAL) basato sulle soglie dello studio.")
+    public List<DayAppointmentCountResponse> getCalendarCounts(
+            @Parameter(description = "Data inizio intervallo (YYYY-MM-DD, inclusiva)")
+            @RequestParam LocalDate startDate,
+            @Parameter(description = "Data fine intervallo (YYYY-MM-DD, inclusiva)")
+            @RequestParam LocalDate endDate,
+            Authentication auth) {
+        return appointmentService.getCalendarCounts(authHelper.getStudioId(auth), startDate, endDate);
     }
 
     @PostMapping("/{id}/propose-new-time")

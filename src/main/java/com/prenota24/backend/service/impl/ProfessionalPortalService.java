@@ -391,7 +391,8 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
     }
 
     private StudioResponse toStudioResponse(Studio s) {
-        return new StudioResponse(s.getId(), s.getName(), s.getEmail(), s.getPhone(), s.getTimezone());
+        return new StudioResponse(s.getId(), s.getName(), s.getEmail(), s.getPhone(), s.getTimezone(),
+                s.getMaxAppointmentsPerDay(), s.getWarningThreshold(), s.getCriticalThreshold());
     }
 
     private AvailabilityExceptionResponse toExceptionResponse(AvailabilityException e) {

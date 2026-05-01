@@ -1,19 +1,24 @@
 package com.prenota24.backend.service.impl;
 
-import com.prenota24.backend.domain.AppointmentStatus;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+
 import com.prenota24.backend.domain.AvailabilityExceptionSlot;
 import com.prenota24.backend.domain.Studio;
 import com.prenota24.backend.dto.TimeSlotResponse;
 import com.prenota24.backend.repository.AppointmentRepository;
 import com.prenota24.backend.repository.AvailabilityExceptionRepository;
 import com.prenota24.backend.repository.AvailabilityRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 
-import java.time.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -61,17 +66,8 @@ public class SlotCalculatorService {
         Instant dayStart = date.atStartOfDay(zone).toInstant();
         Instant dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant();
 
-        // Get all conflicting appointments for the entire day
-        var existingAppointments = appointmentRepository.findByStudioId(
-                studio.getId(),
-                org.springframework.data.domain.Pageable.unpaged()
-        ).getContent().stream()
-                .filter(a -> a.getProfessional().getId().equals(professionalId))
-                .filter(a -> a.getStatus() == AppointmentStatus.REQUESTED
-                        || a.getStatus() == AppointmentStatus.CONFIRMED
-                        || a.getStatus() == AppointmentStatus.PROPOSED_NEW_TIME)
-                .filter(a -> a.getStartDatetime().isBefore(dayEnd) && a.getEndDatetime().isAfter(dayStart))
-                .toList();
+        var existingAppointments = appointmentRepository
+                .findActiveForProfessionalInRange(professionalId, dayStart, dayEnd);
 
         // 4. Generate slots
         List<TimeSlotResponse> slots = new ArrayList<>();
