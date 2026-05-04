@@ -31,11 +31,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final int AUTH_MAX_ATTEMPTS = 10;
     private static final Duration AUTH_WINDOW = Duration.ofMinutes(1);
+    private static final int VERIFICATION_EMAIL_MAX_ATTEMPTS = 3;
+    private static final Duration VERIFICATION_EMAIL_WINDOW = Duration.ofMinutes(1);
     private static final int PASSWORD_RECOVER_MAX_ATTEMPTS = 3;
     private static final Duration PASSWORD_RECOVER_WINDOW = Duration.ofMinutes(1);
+    private static final String REGISTER_PATH = "/api/auth/register";
+    private static final String RESEND_VERIFICATION_PATH = "/api/auth/resend-verification";
     private static final String PASSWORD_RECOVER_PATH = "/api/auth/password-recover";
 
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
+    private final Map<String, Bucket> verificationEmailBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> passwordRecoverBuckets = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
 
@@ -60,6 +65,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (PASSWORD_RECOVER_PATH.equals(request.getRequestURI())) {
             Bucket recoverBucket = passwordRecoverBuckets.computeIfAbsent(ip, k -> createPasswordRecoverBucket());
             if (!recoverBucket.tryConsume(1)) {
+                writeRateLimitedResponse(request, response);
+                return;
+            }
+        }
+
+        if (REGISTER_PATH.equals(request.getRequestURI()) || RESEND_VERIFICATION_PATH.equals(request.getRequestURI())) {
+            Bucket verificationBucket = verificationEmailBuckets.computeIfAbsent(ip, k -> createVerificationEmailBucket());
+            if (!verificationBucket.tryConsume(1)) {
                 writeRateLimitedResponse(request, response);
                 return;
             }
@@ -93,6 +106,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 .refillIntervally(PASSWORD_RECOVER_MAX_ATTEMPTS, PASSWORD_RECOVER_WINDOW)
                 .build())
                 .build();
+    }
+
+    private Bucket createVerificationEmailBucket() {
+        return Bucket.builder()
+            .addLimit(Bandwidth.builder()
+                .capacity(VERIFICATION_EMAIL_MAX_ATTEMPTS)
+                .refillIntervally(VERIFICATION_EMAIL_MAX_ATTEMPTS, VERIFICATION_EMAIL_WINDOW)
+                .build())
+            .build();
     }
 
     private String resolveClientIp(HttpServletRequest request) {

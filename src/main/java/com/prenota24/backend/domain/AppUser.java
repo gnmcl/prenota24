@@ -69,6 +69,13 @@ public class AppUser {
     @Column(name = "verification_code_expires_at")
     private Instant verificationCodeExpiresAt;
 
+    @Column(name = "verification_last_sent_at")
+    private Instant verificationLastSentAt;
+
+    @Column(name = "verification_immediate_resend_used", nullable = false)
+    @Builder.Default
+    private boolean verificationImmediateResendUsed = false;
+
     @Column(name = "password_reset_code", length = 6)
     private String passwordResetCode;
 

@@ -64,6 +64,7 @@ public class AuthService {
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int CODE_EXPIRATION_MINUTES = 15;
+    private static final int VERIFICATION_RESEND_COOLDOWN_SECONDS = 60;
     private static final int PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 60;
 
     private final AppUserRepository appUserRepository;
@@ -143,7 +144,18 @@ public class AuthService {
                 existing.setPasswordHash(passwordEncoder.encode(request.password()));
                 existing.getStudio().setName(request.studioName());
 
-                sendVerificationEmail(existing.getEmail(), existing);
+                Instant now = Instant.now();
+                if (isVerificationEmailRateLimited(existing, now)) {
+                    logger.warn("Verification email throttled during register retry for {}", existing.getEmail());
+                    return new RegisterResponse(existing.getEmail(),
+                            "Codice di verifica reinviato. Controlla la tua email.");
+                }
+
+                boolean hasActiveCode = hasActiveVerificationCode(existing, now);
+                boolean isNewVerificationCycle = !hasActiveCode;
+                boolean consumeImmediateResend = hasActiveCode && !existing.isVerificationImmediateResendUsed();
+
+                sendVerificationEmail(existing.getEmail(), existing, now, isNewVerificationCycle, consumeImmediateResend);
 
                 logger.info("Registration retry: new code sent to {}", existing.getEmail());
                 return new RegisterResponse(existing.getEmail(),
@@ -176,18 +188,10 @@ public class AuthService {
                 .active(true)
                 .build();
         user = appUserRepository.save(user);
-        sendVerificationEmail(user.getEmail(), user);
+        sendVerificationEmail(user.getEmail(), user, Instant.now(), true, false);
 
         logger.info("New studio registered: {} ({})", studio.getName(), user.getEmail());
         return new RegisterResponse(user.getEmail(), "Registrazione completata. Controlla la tua email per il codice di verifica.");
-    }
-
-    private @NonNull String getVerificationCodeAndSetCodeExpiration(AppUser existing) {
-        String code = generateVerificationCode();
-        existing.setVerificationCode(code);
-        existing.setVerificationCodeExpiresAt(Instant.now().plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
-        appUserRepository.save(existing);
-        return code;
     }
 
     // ── Email verification ─────────────────────────────────────────
@@ -214,6 +218,8 @@ public class AuthService {
         user.setEmailVerified(true);
         user.setVerificationCode(null);
         user.setVerificationCodeExpiresAt(null);
+        user.setVerificationLastSentAt(null);
+        user.setVerificationImmediateResendUsed(false);
         appUserRepository.save(user);
 
         logger.info("Email verified for user: {}", user.getEmail());
@@ -229,8 +235,17 @@ public class AuthService {
             throw new RuntimeException("Email già verificata");
         }
 
-        getVerificationCodeAndSetCodeExpiration(user);
-        sendVerificationEmail(user.getEmail(), user);
+        Instant now = Instant.now();
+        if (isVerificationEmailRateLimited(user, now)) {
+            logger.warn("Verification email throttled for {}", user.getEmail());
+            return;
+        }
+
+        boolean hasActiveCode = hasActiveVerificationCode(user, now);
+        boolean isNewVerificationCycle = !hasActiveCode;
+        boolean consumeImmediateResend = hasActiveCode && !user.isVerificationImmediateResendUsed();
+
+        sendVerificationEmail(user.getEmail(), user, now, isNewVerificationCycle, consumeImmediateResend);
 
         logger.info("Verification code resent to: {}", user.getEmail());
     }
@@ -455,10 +470,25 @@ public class AuthService {
         return String.valueOf(code);
     }
 
-    private void sendVerificationEmail(String email, AppUser existingUser) {
+    private void sendVerificationEmail(String email,
+                                       AppUser existingUser,
+                                       Instant now,
+                                       boolean isNewVerificationCycle,
+                                       boolean consumeImmediateResend) {
         try {
             var name  = existingUser.getName();
-            var code  = getVerificationCodeAndSetCodeExpiration(existingUser);
+            var code  = generateVerificationCode();
+
+            existingUser.setVerificationCode(code);
+            existingUser.setVerificationCodeExpiresAt(now.plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
+            existingUser.setVerificationLastSentAt(now);
+            if (isNewVerificationCycle) {
+                existingUser.setVerificationImmediateResendUsed(false);
+            } else if (consumeImmediateResend) {
+                existingUser.setVerificationImmediateResendUsed(true);
+            }
+            appUserRepository.save(existingUser);
+
             var text =
                     "Ciao " + (name != null ? name : "") + ",\n\n" +
                             "Il tuo codice di verifica è: " + code + "\n\n" +
@@ -472,6 +502,25 @@ public class AuthService {
         } catch (MailException e) {
             throw new RuntimeException("Failed to send verification email", e);
         }
+    }
+
+    private boolean hasActiveVerificationCode(AppUser user, Instant now) {
+        return user.getVerificationCode() != null
+                && user.getVerificationCodeExpiresAt() != null
+                && user.getVerificationCodeExpiresAt().isAfter(now);
+    }
+
+    private boolean isVerificationEmailRateLimited(AppUser user, Instant now) {
+        Instant lastSentAt = user.getVerificationLastSentAt();
+        if (lastSentAt == null) {
+            return false;
+        }
+
+        if (!user.isVerificationImmediateResendUsed()) {
+            return false;
+        }
+
+        return lastSentAt.plus(VERIFICATION_RESEND_COOLDOWN_SECONDS, ChronoUnit.SECONDS).isAfter(now);
     }
     
     // ── Password recovery ───────────────────────────────────────────────────
