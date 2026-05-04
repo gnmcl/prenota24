@@ -15,8 +15,6 @@ import java.util.regex.Pattern;
 
 import javax.crypto.SecretKey;
 
-import com.prenota24.backend.dto.*;
-import com.prenota24.backend.common.InvalidPasswordResetCodeException;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,12 +30,26 @@ import org.springframework.transaction.annotation.Transactional;
 import com.prenota24.backend.common.EmailAlreadyRegisteredException;
 import com.prenota24.backend.common.EmailNotVerifiedException;
 import com.prenota24.backend.common.EntityNotFoundException;
+import com.prenota24.backend.common.InvalidPasswordResetCodeException;
 import com.prenota24.backend.config.JwtProperties;
 import com.prenota24.backend.domain.AppUser;
 import com.prenota24.backend.domain.InvitationStatus;
 import com.prenota24.backend.domain.RefreshToken;
 import com.prenota24.backend.domain.Studio;
 import com.prenota24.backend.domain.UserRole;
+import com.prenota24.backend.dto.AcceptInvitationRequest;
+import com.prenota24.backend.dto.AuthUserResponse;
+import com.prenota24.backend.dto.ChangeEmailRequest;
+import com.prenota24.backend.dto.ChangePasswordRequest;
+import com.prenota24.backend.dto.LoginRequest;
+import com.prenota24.backend.dto.LoginResponse;
+import com.prenota24.backend.dto.RecoverPasswordRequest;
+import com.prenota24.backend.dto.RefreshTokenRequest;
+import com.prenota24.backend.dto.RegisterRequest;
+import com.prenota24.backend.dto.RegisterResponse;
+import com.prenota24.backend.dto.ResendVerificationRequest;
+import com.prenota24.backend.dto.ResetPasswordRequest;
+import com.prenota24.backend.dto.VerifyEmailRequest;
 import com.prenota24.backend.repository.AppUserRepository;
 import com.prenota24.backend.repository.RefreshTokenRepository;
 import com.prenota24.backend.repository.StudioRepository;
@@ -52,6 +64,7 @@ public class AuthService {
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int CODE_EXPIRATION_MINUTES = 15;
+    private static final int PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 60;
 
     private final AppUserRepository appUserRepository;
     private final StudioRepository studioRepository;
@@ -474,8 +487,20 @@ public class AuthService {
             // Anti-enumeration: non rivelare se l'email esiste o meno
             return;
         }
+
+        Instant now = Instant.now();
         var user = optUser.get();
-        sendPasswordResetEmail(user);
+
+        if (isPasswordRecoveryRateLimited(user, now)) {
+            logger.warn("Password recovery throttled for {}", user.getEmail());
+            return;
+        }
+
+        boolean hasActiveCode = hasActivePasswordResetCode(user, now);
+        boolean isNewRecoveryCycle = !hasActiveCode;
+        boolean consumeImmediateResend = hasActiveCode && !user.isPasswordResetImmediateResendUsed();
+
+        sendPasswordResetEmail(user, now, isNewRecoveryCycle, consumeImmediateResend);
         logger.info("Password reset code sent to {}", user.getEmail());
     }
 
@@ -513,11 +538,17 @@ public class AuthService {
         logger.info("Password reset completed for user {}", user.getEmail());
     }
 
-    private void sendPasswordResetEmail(AppUser user) {
+    private void sendPasswordResetEmail(AppUser user, Instant now, boolean isNewRecoveryCycle, boolean consumeImmediateResend) {
         try {
             String code = generateVerificationCode();
             user.setPasswordResetCode(code);
-            user.setPasswordResetCodeExpiresAt(Instant.now().plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
+            user.setPasswordResetCodeExpiresAt(now.plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
+            user.setPasswordResetLastSentAt(now);
+            if (isNewRecoveryCycle) {
+                user.setPasswordResetImmediateResendUsed(false);
+            } else if (consumeImmediateResend) {
+                user.setPasswordResetImmediateResendUsed(true);
+            }
             appUserRepository.save(user);
 
             var text =
@@ -534,6 +565,25 @@ public class AuthService {
         } catch (MailException e) {
             throw new RuntimeException("Failed to send password reset email", e);
         }
+    }
+
+    private boolean hasActivePasswordResetCode(AppUser user, Instant now) {
+        return user.getPasswordResetCode() != null
+                && user.getPasswordResetCodeExpiresAt() != null
+                && user.getPasswordResetCodeExpiresAt().isAfter(now);
+    }
+
+    private boolean isPasswordRecoveryRateLimited(AppUser user, Instant now) {
+        Instant lastSentAt = user.getPasswordResetLastSentAt();
+        if (lastSentAt == null) {
+            return false;
+        }
+
+        if (!user.isPasswordResetImmediateResendUsed()) {
+            return false;
+        }
+
+        return lastSentAt.plus(PASSWORD_RESET_RESEND_COOLDOWN_SECONDS, ChronoUnit.SECONDS).isAfter(now);
     }
 
     private @NonNull SimpleMailMessage getSimpleMailMessage(String email, String subject, String text) {

@@ -75,6 +75,13 @@ public class AppUser {
     @Column(name = "password_reset_code_expires_at")
     private Instant passwordResetCodeExpiresAt;
 
+    @Column(name = "password_reset_last_sent_at")
+    private Instant passwordResetLastSentAt;
+
+    @Column(name = "password_reset_immediate_resend_used", nullable = false)
+    @Builder.Default
+    private boolean passwordResetImmediateResendUsed = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
