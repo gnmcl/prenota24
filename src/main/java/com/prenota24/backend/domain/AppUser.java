@@ -69,6 +69,12 @@ public class AppUser {
     @Column(name = "verification_code_expires_at")
     private Instant verificationCodeExpiresAt;
 
+    @Column(name = "password_reset_code", length = 6)
+    private String passwordResetCode;
+
+    @Column(name = "password_reset_code_expires_at")
+    private Instant passwordResetCodeExpiresAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

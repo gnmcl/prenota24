@@ -94,6 +94,20 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(InvalidPasswordResetCodeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPasswordResetCode(
+            InvalidPasswordResetCodeException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
+                .body(ErrorResponse.of(
+                        HttpStatus.UNPROCESSABLE_CONTENT.value(),
+                        "INVALID_RESET_CODE",
+                        ex.getMessage(),
+                        request.getRequestURI()
+                ));
+    }
+
     /* ---------- VALIDATION ---------- */
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

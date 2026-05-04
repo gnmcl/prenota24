@@ -15,6 +15,9 @@ import java.util.regex.Pattern;
 
 import javax.crypto.SecretKey;
 
+import com.prenota24.backend.dto.*;
+import com.prenota24.backend.common.InvalidPasswordResetCodeException;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,17 +38,6 @@ import com.prenota24.backend.domain.InvitationStatus;
 import com.prenota24.backend.domain.RefreshToken;
 import com.prenota24.backend.domain.Studio;
 import com.prenota24.backend.domain.UserRole;
-import com.prenota24.backend.dto.AcceptInvitationRequest;
-import com.prenota24.backend.dto.AuthUserResponse;
-import com.prenota24.backend.dto.ChangeEmailRequest;
-import com.prenota24.backend.dto.ChangePasswordRequest;
-import com.prenota24.backend.dto.LoginRequest;
-import com.prenota24.backend.dto.LoginResponse;
-import com.prenota24.backend.dto.RefreshTokenRequest;
-import com.prenota24.backend.dto.RegisterRequest;
-import com.prenota24.backend.dto.RegisterResponse;
-import com.prenota24.backend.dto.ResendVerificationRequest;
-import com.prenota24.backend.dto.VerifyEmailRequest;
 import com.prenota24.backend.repository.AppUserRepository;
 import com.prenota24.backend.repository.RefreshTokenRepository;
 import com.prenota24.backend.repository.StudioRepository;
@@ -138,11 +130,7 @@ public class AuthService {
                 existing.setPasswordHash(passwordEncoder.encode(request.password()));
                 existing.getStudio().setName(request.studioName());
 
-                String code = generateVerificationCode();
-                existing.setVerificationCode(code);
-                existing.setVerificationCodeExpiresAt(Instant.now().plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
-                appUserRepository.save(existing);
-                sendVerificationEmail(existing.getEmail(), existing.getName(), code);
+                sendVerificationEmail(existing.getEmail(), existing);
 
                 logger.info("Registration retry: new code sent to {}", existing.getEmail());
                 return new RegisterResponse(existing.getEmail(),
@@ -175,16 +163,18 @@ public class AuthService {
                 .active(true)
                 .build();
         user = appUserRepository.save(user);
-
-        // Generate and send verification code
-        String code = generateVerificationCode();
-        user.setVerificationCode(code);
-        user.setVerificationCodeExpiresAt(Instant.now().plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
-        appUserRepository.save(user);
-        sendVerificationEmail(user.getEmail(), user.getName(), code);
+        sendVerificationEmail(user.getEmail(), user);
 
         logger.info("New studio registered: {} ({})", studio.getName(), user.getEmail());
         return new RegisterResponse(user.getEmail(), "Registrazione completata. Controlla la tua email per il codice di verifica.");
+    }
+
+    private @NonNull String getVerificationCodeAndSetCodeExpiration(AppUser existing) {
+        String code = generateVerificationCode();
+        existing.setVerificationCode(code);
+        existing.setVerificationCodeExpiresAt(Instant.now().plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
+        appUserRepository.save(existing);
+        return code;
     }
 
     // ── Email verification ─────────────────────────────────────────
@@ -226,11 +216,8 @@ public class AuthService {
             throw new RuntimeException("Email già verificata");
         }
 
-        String code = generateVerificationCode();
-        user.setVerificationCode(code);
-        user.setVerificationCodeExpiresAt(Instant.now().plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
-        appUserRepository.save(user);
-        sendVerificationEmail(user.getEmail(), user.getName(), code);
+        getVerificationCodeAndSetCodeExpiration(user);
+        sendVerificationEmail(user.getEmail(), user);
 
         logger.info("Verification code resent to: {}", user.getEmail());
     }
@@ -455,23 +442,106 @@ public class AuthService {
         return String.valueOf(code);
     }
 
-    private void sendVerificationEmail(String email, String name, String code) {
+    private void sendVerificationEmail(String email, AppUser existingUser) {
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(mailFrom);
-            message.setTo(email);
-            message.setSubject("Prenota24 – Codice di verifica");
-            message.setText(
+            var name  = existingUser.getName();
+            var code  = getVerificationCodeAndSetCodeExpiration(existingUser);
+            var text =
                     "Ciao " + (name != null ? name : "") + ",\n\n" +
-                    "Il tuo codice di verifica è: " + code + "\n\n" +
-                    "Il codice scade tra " + CODE_EXPIRATION_MINUTES + " minuti.\n\n" +
-                    "Se non hai richiesto questa registrazione, ignora questa email.\n\n" +
-                    "— Prenota24"
-            );
+                            "Il tuo codice di verifica è: " + code + "\n\n" +
+                            "Il codice scade tra " + CODE_EXPIRATION_MINUTES + " minuti.\n\n" +
+                            "Se non hai richiesto questa registrazione, ignora questa email.\n\n" +
+                            "— Prenota24";
+            
+            var message = getSimpleMailMessage(email, "Prenota24 – Codice di verifica", text);
             mailSender.send(message);
             logger.info("Verification email sent to {}", email);
         } catch (MailException e) {
             throw new RuntimeException("Failed to send verification email", e);
         }
+    }
+    
+    // ── Password recovery ───────────────────────────────────────────────────
+
+    /**
+     * Invia un codice di reset password via email.
+     * Risponde sempre con successo per non rivelare se la mail esiste nel sistema (anti-enumeration).
+     */
+    @Transactional
+    public void recoverPassword(RecoverPasswordRequest request) {
+        var optUser = appUserRepository.findByEmail(request.email().trim().toLowerCase());
+        if (optUser.isEmpty()) {
+            // Anti-enumeration: non rivelare se l'email esiste o meno
+            return;
+        }
+        var user = optUser.get();
+        sendPasswordResetEmail(user);
+        logger.info("Password reset code sent to {}", user.getEmail());
+    }
+
+    /**
+     * Verifica il codice di reset e imposta la nuova password.
+     * Non richiede la vecchia password perché l'utente l'ha dimenticata.
+     * Revoca tutti i refresh token dopo il reset per forzare il re-login sugli altri dispositivi.
+     */
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        var user = appUserRepository.findByEmail(request.email().trim().toLowerCase())
+                .orElseThrow(() -> new InvalidPasswordResetCodeException("Codice non valido o scaduto"));
+
+        if (user.getPasswordResetCode() == null
+                || !user.getPasswordResetCode().equals(request.code())) {
+            throw new InvalidPasswordResetCodeException("Codice non valido o scaduto");
+        }
+
+        if (user.getPasswordResetCodeExpiresAt() == null
+                || user.getPasswordResetCodeExpiresAt().isBefore(Instant.now())) {
+            // Pulisci il codice scaduto
+            user.setPasswordResetCode(null);
+            user.setPasswordResetCodeExpiresAt(null);
+            appUserRepository.save(user);
+            throw new InvalidPasswordResetCodeException("Codice non valido o scaduto");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        user.setPasswordResetCode(null);
+        user.setPasswordResetCodeExpiresAt(null);
+        appUserRepository.save(user);
+
+        // Revoca tutti i refresh token: qualunque sessione aperta deve ri-autenticarsi
+        refreshTokenRepository.revokeAllByUserId(user.getId());
+        logger.info("Password reset completed for user {}", user.getEmail());
+    }
+
+    private void sendPasswordResetEmail(AppUser user) {
+        try {
+            String code = generateVerificationCode();
+            user.setPasswordResetCode(code);
+            user.setPasswordResetCodeExpiresAt(Instant.now().plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
+            appUserRepository.save(user);
+
+            var text =
+                    "Ciao " + (user.getName() != null ? user.getName() : "") + ",\n\n" +
+                    "Hai richiesto il recupero della tua password su Prenota24.\n\n" +
+                    "Il tuo codice di recupero è: " + code + "\n\n" +
+                    "Il codice scade tra " + CODE_EXPIRATION_MINUTES + " minuti.\n\n" +
+                    "Se non hai richiesto il recupero della password, ignora questa email: " +
+                    "il tuo account è al sicuro.\n\n" +
+                    "— Prenota24";
+
+            var message = getSimpleMailMessage(user.getEmail(), "Prenota24 – Recupero password", text);
+            mailSender.send(message);
+        } catch (MailException e) {
+            throw new RuntimeException("Failed to send password reset email", e);
+        }
+    }
+
+    private @NonNull SimpleMailMessage getSimpleMailMessage(String email, String subject, String text) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(mailFrom);
+        message.setTo(email);
+        message.setSubject(subject);
+        message.setText(text);
+        return message;
     }
 }

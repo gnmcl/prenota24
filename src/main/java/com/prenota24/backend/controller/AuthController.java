@@ -2,6 +2,7 @@ package com.prenota24.backend.controller;
 
 import java.util.UUID;
 
+import com.prenota24.backend.dto.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,14 +12,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.prenota24.backend.auth.AuthService;
-import com.prenota24.backend.dto.AcceptInvitationRequest;
-import com.prenota24.backend.dto.LoginRequest;
-import com.prenota24.backend.dto.LoginResponse;
-import com.prenota24.backend.dto.RefreshTokenRequest;
-import com.prenota24.backend.dto.RegisterRequest;
-import com.prenota24.backend.dto.RegisterResponse;
-import com.prenota24.backend.dto.ResendVerificationRequest;
-import com.prenota24.backend.dto.VerifyEmailRequest;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -97,5 +90,26 @@ public class AuthController {
     @ApiResponse(responseCode = "400", description = "Token non valido o scaduto")
     public LoginResponse acceptInvitation(@RequestBody @Valid AcceptInvitationRequest request) {
         return authService.acceptInvitation(request);
+    }
+
+    @PostMapping("/password-recover")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Recupero password",
+            description = "Invia un codice di recupero via email. Risponde sempre con 204 per non rivelare se l'indirizzo è registrato.")
+    @ApiResponse(responseCode = "204", description = "Richiesta elaborata")
+    public void recoverPassword(@RequestBody @Valid RecoverPasswordRequest request) {
+        authService.recoverPassword(request);
+    }
+
+    @PostMapping("/password-reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Reset password",
+            description = "Verifica il codice di recupero e imposta la nuova password. Non richiede la vecchia password.")
+    @ApiResponse(responseCode = "204", description = "Password aggiornata")
+    @ApiResponse(responseCode = "422", description = "Codice non valido o scaduto")
+    public void resetPassword(@RequestBody @Valid ResetPasswordRequest request) {
+        authService.resetPassword(request);
     }
 }
