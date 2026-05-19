@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.0.2</version>
+		<version>4.0.6</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.prenota24</groupId>
@@ -27,8 +27,11 @@
 		<url/>
 	</scm>
 	<properties>
-		<java.version>21</java.version>
-		<assertj.version>3.25.3</assertj.version>
+		<java.version>25</java.version>
+		<assertj.version>3.27.7</assertj.version>
+		<tomcat.version>11.0.22</tomcat.version>
+		<spring-security.version>7.0.5</spring-security.version>
+		<postgresql.version>42.7.11</postgresql.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
