@@ -49,6 +49,8 @@ public class AppointmentService implements IAppointmentService {
     private final StudioRepository studioRepository;
     private final AppointmentStateMachine stateMachine;
 
+    private final NotificationService notificationService;
+
     @Override
     @Transactional
     public AppointmentResponse create(CreateAppointmentRequest request, UUID studioId) {
@@ -182,6 +184,7 @@ public class AppointmentService implements IAppointmentService {
         var appointment = findByIdAndStudio(id, studioId);
         appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.CONFIRM));
         appointment = appointmentRepository.save(appointment);
+        notificationService.scheduleForTransition(appointment, AppointmentAction.CONFIRM);
         return toResponse(appointment);
     }
 
@@ -193,6 +196,7 @@ public class AppointmentService implements IAppointmentService {
         appointment.setCancellationReason(request != null ? request.reason() : null);
         appointment.setCancelledBy(cancelledBy);
         appointment = appointmentRepository.save(appointment);
+        notificationService.scheduleForTransition(appointment, AppointmentAction.CANCEL);
         return toResponse(appointment);
     }
 
@@ -235,6 +239,7 @@ public class AppointmentService implements IAppointmentService {
         appointment.setProposedStart(request.proposedStart());
         appointment.setProposedEnd(request.proposedEnd());
         appointment = appointmentRepository.save(appointment);
+        notificationService.scheduleForTransition(appointment, AppointmentAction.PROPOSE_NEW_TIME);
         return toResponse(appointment);
     }
 
@@ -251,6 +256,10 @@ public class AppointmentService implements IAppointmentService {
         appointment.setProposedEnd(null);
 
         appointment = appointmentRepository.save(appointment);
+        // Notifica il professionista che il cliente ha accettato
+        notificationService.scheduleForTransition(appointment, AppointmentAction.ACCEPT_PROPOSAL);
+        // Invia al cliente la conferma con i dettagli aggiornati
+        notificationService.scheduleForTransition(appointment, AppointmentAction.CONFIRM);
         return toResponse(appointment);
     }
 
@@ -329,6 +338,7 @@ public class AppointmentService implements IAppointmentService {
         return new AppointmentResponse(
                 a.getId(),
                 a.getStudio().getId(),
+                a.getStudio().getSlug(),
                 a.getProfessional().getId(),
                 a.getProfessional().getFirstName() + " " + a.getProfessional().getLastName(),
                 a.getClient().getId(),

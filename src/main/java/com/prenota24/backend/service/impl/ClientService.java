@@ -189,6 +189,7 @@ public class ClientService implements IClientService {
         return new AppointmentResponse(
                 a.getId(),
                 a.getStudio().getId(),
+                a.getStudio().getSlug(),
                 a.getProfessional().getId(),
                 a.getProfessional().getFirstName() + " " + a.getProfessional().getLastName(),
                 a.getClient().getId(),

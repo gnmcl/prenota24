@@ -26,9 +26,11 @@ public class ProposalAcceptedTemplate implements NotificationTemplate {
         var professionalName = apt.getProfessional().getFirstName();
         var clientFullName = apt.getClient().getFirstName() + " " + apt.getClient().getLastName();
         var serviceName = apt.getServiceType() != null ? apt.getServiceType().getName() : "Visita";
-        var date = TemplateUtils.formatDate(apt.getProposedStart(), tz);
-        var time = TemplateUtils.formatTime(apt.getProposedStart(), tz);
-        var endTime = TemplateUtils.formatTime(apt.getProposedEnd(), tz);
+        // After ACCEPT_PROPOSAL, proposedStart/proposedEnd are cleared and the new slot
+        // is copied into startDatetime/endDatetime.
+        var date = TemplateUtils.formatDate(apt.getStartDatetime(), tz);
+        var time = TemplateUtils.formatTime(apt.getStartDatetime(), tz);
+        var endTime = TemplateUtils.formatTime(apt.getEndDatetime(), tz);
 
         var subject = "Proposta orario accettata — " + clientFullName;
 

@@ -9,6 +9,7 @@ import com.prenota24.backend.domain.CancelledBy;
 public record AppointmentResponse(
         UUID id,
         UUID studioId,
+        String studioSlug,
         UUID professionalId,
         String professionalFullName,
         UUID clientId,

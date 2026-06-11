@@ -32,10 +32,12 @@ import com.prenota24.backend.dto.ClientSummaryResponse;
 import com.prenota24.backend.dto.CreateAppointmentRequest;
 import com.prenota24.backend.dto.CreateAvailabilityExceptionRequest;
 import com.prenota24.backend.dto.CreateClientRequest;
+import com.prenota24.backend.dto.ProposeNewTimeRequest;
 import com.prenota24.backend.dto.ProfessionalDashboardResponse;
 import com.prenota24.backend.dto.ProfessionalResponse;
 import com.prenota24.backend.dto.ServiceTypeResponse;
 import com.prenota24.backend.dto.StudioResponse;
+import com.prenota24.backend.dto.TimeSlotResponse;
 import com.prenota24.backend.repository.AppointmentRepository;
 import com.prenota24.backend.repository.AvailabilityExceptionRepository;
 import com.prenota24.backend.repository.AvailabilityRepository;
@@ -59,6 +61,9 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
     private final AvailabilityRepository availabilityRepository;
     private final AvailabilityExceptionRepository exceptionRepository;
     private final AppointmentStateMachine stateMachine;
+        private final SlotCalculatorService slotCalculatorService;
+
+    private final NotificationService notificationService;
 
     // ── Dashboard ──────────────────────────────────────
 
@@ -158,6 +163,7 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
         var appointment = findMyAppointment(appointmentId, professionalId);
         appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.CONFIRM));
         appointment = appointmentRepository.save(appointment);
+        notificationService.scheduleForTransition(appointment, AppointmentAction.CONFIRM);
         return toAppointmentResponse(appointment);
     }
 
@@ -189,6 +195,45 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
         appointment = appointmentRepository.save(appointment);
         return toAppointmentResponse(appointment);
     }
+
+        @Override
+        @Transactional
+        public AppointmentResponse proposeNewTime(UUID appointmentId,
+                                                                                          ProposeNewTimeRequest request,
+                                                                                          UUID professionalId,
+                                                                                          UUID studioId) {
+                var appointment = findMyAppointment(appointmentId, professionalId);
+
+                long conflicts = appointmentRepository.countConflictingAppointments(
+                                professionalId,
+                                request.proposedStart(),
+                                request.proposedEnd(),
+                                appointmentId
+                );
+                if (conflicts > 0) {
+                        throw new com.prenota24.backend.common.SlotNotAvailableException(
+                                        "L'orario proposto si sovrappone con un altro appuntamento"
+                        );
+                }
+
+                appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.PROPOSE_NEW_TIME));
+                appointment.setProposedStart(request.proposedStart());
+                appointment.setProposedEnd(request.proposedEnd());
+                appointment = appointmentRepository.save(appointment);
+                notificationService.scheduleForTransition(appointment, AppointmentAction.PROPOSE_NEW_TIME);
+                return toAppointmentResponse(appointment);
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public List<TimeSlotResponse> getMyAvailableSlots(UUID professionalId,
+                                                                                                          LocalDate date,
+                                                                                                          int durationMinutes,
+                                                                                                          UUID studioId) {
+                var professional = professionalRepository.findByIdAndStudioId(professionalId, studioId)
+                                .orElseThrow(() -> new EntityNotFoundException("Professionista non trovato"));
+                return slotCalculatorService.calculateSlots(professionalId, date, durationMinutes, professional.getStudio());
+        }
 
     // ── Clients ──────────────────────────────────────
 
@@ -356,6 +401,7 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
         return new AppointmentResponse(
                 a.getId(),
                 a.getStudio().getId(),
+                a.getStudio().getSlug(),
                 a.getProfessional().getId(),
                 a.getProfessional().getFirstName() + " " + a.getProfessional().getLastName(),
                 a.getClient().getId(),
@@ -391,7 +437,7 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
     }
 
     private StudioResponse toStudioResponse(Studio s) {
-        return new StudioResponse(s.getId(), s.getName(), s.getEmail(), s.getPhone(), s.getTimezone(),
+        return new StudioResponse(s.getId(), s.getName(), s.getSlug(), s.getEmail(), s.getPhone(), s.getTimezone(),
                 s.getMaxAppointmentsPerDay(), s.getWarningThreshold(), s.getCriticalThreshold());
     }
 

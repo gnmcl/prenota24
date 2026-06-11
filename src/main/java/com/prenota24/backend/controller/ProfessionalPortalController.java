@@ -1,5 +1,6 @@
 package com.prenota24.backend.controller;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.format.annotation.DateTimeFormat;
 
 import com.prenota24.backend.common.AuthHelper;
 import com.prenota24.backend.dto.AppointmentResponse;
@@ -30,9 +32,11 @@ import com.prenota24.backend.dto.ClientSummaryResponse;
 import com.prenota24.backend.dto.CreateAppointmentRequest;
 import com.prenota24.backend.dto.CreateAvailabilityExceptionRequest;
 import com.prenota24.backend.dto.CreateClientRequest;
+import com.prenota24.backend.dto.ProposeNewTimeRequest;
 import com.prenota24.backend.dto.ProfessionalDashboardResponse;
 import com.prenota24.backend.dto.ServiceTypeResponse;
 import com.prenota24.backend.dto.StudioResponse;
+import com.prenota24.backend.dto.TimeSlotResponse;
 import com.prenota24.backend.service.IProfessionalPortalService;
 import com.prenota24.backend.service.IStudioService;
 
@@ -125,6 +129,31 @@ public class ProfessionalPortalController {
     @PostMapping("/appointments/{id}/no-show")
     public AppointmentResponse noShowAppointment(@PathVariable UUID id, Authentication auth) {
         return portalService.noShowAppointment(id, authHelper.getProfessionalId(auth));
+    }
+
+    @PostMapping("/appointments/{id}/propose-new-time")
+    public AppointmentResponse proposeNewTime(@PathVariable UUID id,
+                                              @RequestBody @Valid ProposeNewTimeRequest request,
+                                              Authentication auth) {
+        return portalService.proposeNewTime(
+                id,
+                request,
+                authHelper.getProfessionalId(auth),
+                authHelper.getStudioId(auth)
+        );
+    }
+
+    @GetMapping("/appointments/slots")
+    @Operation(summary = "Slot liberi per il professionista corrente")
+    public List<TimeSlotResponse> getMySlots(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+                                             @RequestParam int durationMinutes,
+                                             Authentication auth) {
+        return portalService.getMyAvailableSlots(
+                authHelper.getProfessionalId(auth),
+                date,
+                durationMinutes,
+                authHelper.getStudioId(auth)
+        );
     }
 
     // ── Clients ──────────────────────────────────────

@@ -1,5 +1,6 @@
 package com.prenota24.backend.service;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,7 +17,9 @@ import com.prenota24.backend.dto.CreateAppointmentRequest;
 import com.prenota24.backend.dto.CreateAvailabilityExceptionRequest;
 import com.prenota24.backend.dto.CreateClientRequest;
 import com.prenota24.backend.dto.ProfessionalDashboardResponse;
+import com.prenota24.backend.dto.ProposeNewTimeRequest;
 import com.prenota24.backend.dto.ServiceTypeResponse;
+import com.prenota24.backend.dto.TimeSlotResponse;
 
 public interface IProfessionalPortalService {
 
@@ -41,6 +44,10 @@ public interface IProfessionalPortalService {
     AppointmentResponse completeAppointment(UUID appointmentId, UUID professionalId);
 
     AppointmentResponse noShowAppointment(UUID appointmentId, UUID professionalId);
+
+    AppointmentResponse proposeNewTime(UUID appointmentId, ProposeNewTimeRequest request, UUID professionalId, UUID studioId);
+
+    List<TimeSlotResponse> getMyAvailableSlots(UUID professionalId, LocalDate date, int durationMinutes, UUID studioId);
 
     // ── Availability ──────────────────────────────────────
 

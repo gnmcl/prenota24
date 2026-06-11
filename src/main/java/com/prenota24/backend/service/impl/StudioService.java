@@ -1,5 +1,10 @@
 package com.prenota24.backend.service.impl;
 
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.domain.Studio;
 import com.prenota24.backend.dto.CreateStudioRequest;
@@ -7,11 +12,8 @@ import com.prenota24.backend.dto.EditStudioProfileRequest;
 import com.prenota24.backend.dto.StudioResponse;
 import com.prenota24.backend.repository.StudioRepository;
 import com.prenota24.backend.service.IStudioService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -62,6 +64,7 @@ public class StudioService implements IStudioService {
         return new StudioResponse(
                 studio.getId(),
                 studio.getName(),
+                studio.getSlug(),
                 studio.getEmail(),
                 studio.getPhone(),
                 studio.getTimezone(),

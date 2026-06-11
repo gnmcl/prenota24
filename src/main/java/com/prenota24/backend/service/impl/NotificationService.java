@@ -1,139 +1,107 @@
 package com.prenota24.backend.service.impl;
 
-import com.prenota24.backend.domain.*;
+import com.prenota24.backend.domain.Appointment;
+import com.prenota24.backend.domain.AppointmentAction;
+import com.prenota24.backend.domain.Notification;
+import com.prenota24.backend.domain.NotificationChannel;
+import com.prenota24.backend.domain.NotificationType;
+import com.prenota24.backend.dto.NotificationPayload;
 import com.prenota24.backend.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.List;
 
+/**
+ * Responsible for:
+ * 1. Persisting Notification entities
+ * 2. Dispatching them immediately after transaction commit
+ *
+ * No email content, no String.format(), no switch on action types.
+ * All payload building is delegated to AppointmentNotificationFactory.
+ */
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
+    private final NotificationDispatcher notificationDispatcher;
+    private final AppointmentNotificationFactory notificationFactory;
 
-    @Transactional
-    public Notification schedule(Appointment apt, NotificationChannel channel, String type,
-                                  UUID recipientId, RecipientType recipientType, Map<String, Object> payload) {
-        var notification = Notification.builder()
-                .studio(apt.getStudio())
-                .appointment(apt)
-                .channel(channel)
-                .type(type)
-                .recipientId(recipientId)
-                .recipientType(recipientType)
-                .scheduledAt(Instant.now())
-                .payload(payload)
-                .build();
+    // ── Public API ────────────────────────────────────────────────────────────
 
-        return notificationRepository.save(notification);
-    }
-
-    @Transactional
-    public Notification scheduleReminder(Appointment apt, NotificationChannel channel) {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("recipientEmail", apt.getClient().getEmail());
-        payload.put("recipientName", apt.getClient().getFirstName() + " " + apt.getClient().getLastName());
-        payload.put("subject", "Promemoria: appuntamento domani");
-        payload.put("body", String.format(
-                "Ciao %s,\n\nTi ricordiamo il tuo appuntamento con %s %s previsto per domani.\n\nPrenota24",
-                apt.getClient().getFirstName(),
-                apt.getProfessional().getFirstName(),
-                apt.getProfessional().getLastName()
-        ));
-
-        var notification = Notification.builder()
-                .studio(apt.getStudio())
-                .appointment(apt)
-                .channel(channel)
-                .type("REMINDER_24H")
-                .recipientId(apt.getClient().getId())
-                .recipientType(RecipientType.CLIENT)
-                .scheduledAt(apt.getStartDatetime().minus(24, ChronoUnit.HOURS))
-                .payload(payload)
-                .build();
-
-        return notificationRepository.save(notification);
-    }
-
+    /**
+     * Schedule and immediately dispatch all notifications for an appointment action.
+     * Called after a state machine transition (confirm, cancel, propose, etc.).
+     */
     @Transactional
     public void scheduleForTransition(Appointment apt, AppointmentAction action) {
-        Map<String, Object> payload = new HashMap<>();
+        var payloads = notificationFactory.buildForAction(apt, action);
+        payloads.forEach(p -> scheduleAndDispatch(apt, p));
+    }
 
-        switch (action) {
-            case CONFIRM -> {
-                payload.put("recipientEmail", apt.getClient().getEmail());
-                payload.put("recipientName", apt.getClient().getFirstName());
-                payload.put("subject", "Appuntamento confermato");
-                payload.put("body", String.format(
-                        "Ciao %s,\n\nIl tuo appuntamento con %s %s è stato confermato.\n\nPrenota24",
-                        apt.getClient().getFirstName(),
-                        apt.getProfessional().getFirstName(),
-                        apt.getProfessional().getLastName()
-                ));
-                schedule(apt, NotificationChannel.EMAIL, "APPOINTMENT_CONFIRMED",
-                        apt.getClient().getId(), RecipientType.CLIENT, payload);
-            }
-            case CANCEL -> {
-                // Notify the other party
-                if (apt.getCancelledBy() == CancelledBy.PROFESSIONAL) {
-                    payload.put("recipientEmail", apt.getClient().getEmail());
-                    payload.put("recipientName", apt.getClient().getFirstName());
-                    payload.put("subject", "Appuntamento cancellato");
-                    payload.put("body", "Il tuo appuntamento è stato cancellato." +
-                            (apt.getCancellationReason() != null ? " Motivo: " + apt.getCancellationReason() : ""));
-                    schedule(apt, NotificationChannel.EMAIL, "APPOINTMENT_CANCELLED",
-                            apt.getClient().getId(), RecipientType.CLIENT, payload);
+    /**
+     * Schedule the 24h reminder for an appointment.
+     * The reminder is scheduled 24h before the appointment start; the dispatcher
+     * will pick it up at the right time via ReminderScheduler.processPending().
+     */
+    @Transactional
+    public Notification scheduleReminder(Appointment apt, NotificationChannel channel) {
+        var payload = notificationFactory.build(NotificationType.REMINDER_24H, apt);
+        var notification = Notification.builder()
+                .studio(apt.getStudio())
+                .appointment(apt)
+                .channel(payload.channel())
+                .type(payload.type().name())
+                .recipientId(payload.recipientId())
+                .recipientType(payload.recipientType())
+                .scheduledAt(apt.getStartDatetime().minus(24, ChronoUnit.HOURS))
+                .payload(payload.email().toMap())
+                .build();
+        return notificationRepository.save(notification);
+        // No immediate dispatch: reminder is scheduled in the future,
+        // ReminderScheduler.dispatchPending() will send it at the right time.
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private void scheduleAndDispatch(Appointment apt, NotificationPayload payload) {
+        var notification = Notification.builder()
+                .studio(apt.getStudio())
+                .appointment(apt)
+                .channel(payload.channel())
+                .type(payload.type().name())
+                .recipientId(payload.recipientId())
+                .recipientType(payload.recipientType())
+                .scheduledAt(Instant.now())
+                .payload(payload.email().toMap())
+                .build();
+
+        var saved = notificationRepository.save(notification);
+        dispatchAfterCommit(saved);
+    }
+
+    /**
+     * Registers a post-commit callback so the async dispatcher reads a fully
+     * committed row — avoids the race condition where the async thread queries
+     * a not-yet-visible notification.
+     */
+    private void dispatchAfterCommit(Notification notification) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notificationDispatcher.dispatch(notification);
                 }
-                // If cancelled by client, notify professional (if they have email)
-                if (apt.getCancelledBy() == CancelledBy.CLIENT && apt.getProfessional().getEmail() != null) {
-                    payload.put("recipientEmail", apt.getProfessional().getEmail());
-                    payload.put("recipientName", apt.getProfessional().getFirstName());
-                    payload.put("subject", "Appuntamento cancellato dal cliente");
-                    payload.put("body", String.format(
-                            "Il cliente %s %s ha cancellato il suo appuntamento.",
-                            apt.getClient().getFirstName(), apt.getClient().getLastName()
-                    ));
-                    schedule(apt, NotificationChannel.EMAIL, "APPOINTMENT_CANCELLED",
-                            apt.getProfessional().getId(), RecipientType.PROFESSIONAL, payload);
-                }
-            }
-            case PROPOSE_NEW_TIME -> {
-                payload.put("recipientEmail", apt.getClient().getEmail());
-                payload.put("recipientName", apt.getClient().getFirstName());
-                payload.put("subject", "Nuovo orario proposto per il tuo appuntamento");
-                payload.put("body", String.format(
-                        "Ciao %s,\n\n%s %s ti ha proposto un nuovo orario per il tuo appuntamento.\n\n" +
-                                "Per accettare o rifiutare, visita: /booking/confirm/%s\n\nPrenota24",
-                        apt.getClient().getFirstName(),
-                        apt.getProfessional().getFirstName(),
-                        apt.getProfessional().getLastName(),
-                        apt.getToken()
-                ));
-                payload.put("tokenLink", "/booking/confirm/" + apt.getToken());
-                schedule(apt, NotificationChannel.EMAIL, "PROPOSAL_RECEIVED",
-                        apt.getClient().getId(), RecipientType.CLIENT, payload);
-            }
-            case ACCEPT_PROPOSAL -> {
-                if (apt.getProfessional().getEmail() != null) {
-                    payload.put("recipientEmail", apt.getProfessional().getEmail());
-                    payload.put("recipientName", apt.getProfessional().getFirstName());
-                    payload.put("subject", "Proposta orario accettata");
-                    payload.put("body", String.format(
-                            "%s %s ha accettato il nuovo orario proposto.",
-                            apt.getClient().getFirstName(), apt.getClient().getLastName()
-                    ));
-                    schedule(apt, NotificationChannel.EMAIL, "PROPOSAL_ACCEPTED",
-                            apt.getProfessional().getId(), RecipientType.PROFESSIONAL, payload);
-                }
-            }
-            default -> {} // No notification for COMPLETE, NO_SHOW, REJECT_PROPOSAL
+            });
+        } else {
+            // Outside a transaction (e.g. tests): dispatch immediately
+            notificationDispatcher.dispatch(notification);
         }
     }
 }
