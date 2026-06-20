@@ -30,15 +30,20 @@ spring:
 
   mail:
     host: ${MAIL_HOST}
-    port: ${MAIL_PORT}
+    port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME}
     password: ${MAIL_PASSWORD}
     properties:
       mail:
         smtp:
           auth: true
-          ssl:
+          starttls:
             enable: true
+            required: true
+          ssl:
+            # Disabilitato: porta 465 (SMTPS) bloccata da Render e molti PaaS.
+            # Usiamo porta 587 con STARTTLS, supportata da tutti i provider incluso Aruba.
+            enable: false
         from: ${MAIL_FROM}
 
   task:

@@ -20,13 +20,13 @@ spring:
           time_zone: UTC
 
   mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
+    host: ${MAIL_HOST:smtp.aruba.it}
     port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
     properties:
       mail:
-        from: dev@prenota24.com
+        from: ${MAIL_FROM:dev@prenota24.it}
 
 jwt:
   secret: dev-only-secret-change-in-production-min-32-chars!!
