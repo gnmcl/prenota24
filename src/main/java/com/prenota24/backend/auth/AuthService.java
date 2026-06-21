@@ -15,13 +15,8 @@ import java.util.regex.Pattern;
 
 import javax.crypto.SecretKey;
 
-import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -32,6 +27,7 @@ import com.prenota24.backend.common.EmailNotVerifiedException;
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.common.InvalidPasswordResetCodeException;
 import com.prenota24.backend.config.JwtProperties;
+import com.prenota24.backend.config.ResendProperties;
 import com.prenota24.backend.domain.AppUser;
 import com.prenota24.backend.domain.InvitationStatus;
 import com.prenota24.backend.domain.RefreshToken;
@@ -50,10 +46,13 @@ import com.prenota24.backend.dto.RegisterResponse;
 import com.prenota24.backend.dto.ResendVerificationRequest;
 import com.prenota24.backend.dto.ResetPasswordRequest;
 import com.prenota24.backend.dto.VerifyEmailRequest;
+import com.prenota24.backend.email.BaseEmailLayout;
 import com.prenota24.backend.repository.AppUserRepository;
 import com.prenota24.backend.repository.RefreshTokenRepository;
 import com.prenota24.backend.repository.StudioRepository;
 import com.prenota24.backend.repository.TeamInvitationRepository;
+import com.resend.Resend;
+import com.resend.services.emails.model.CreateEmailOptions;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -72,27 +71,28 @@ public class AuthService {
     private final TeamInvitationRepository teamInvitationRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JavaMailSender mailSender;
+    // Resend HTTP client — sostituisce JavaMailSender/SMTP (bloccato su Render Free)
+    private final Resend resendClient;
+    private final ResendProperties resendProperties;
     private final SecretKey key;
     private final int accessTokenMinutes;
     private final int refreshTokenDays;
-
-    @Value("${spring.mail.username}")
-    private String mailFrom;
 
     public AuthService(AppUserRepository appUserRepository,
                        StudioRepository studioRepository,
                        TeamInvitationRepository teamInvitationRepository,
                        RefreshTokenRepository refreshTokenRepository,
                        PasswordEncoder passwordEncoder,
-                       JavaMailSender mailSender,
+                       Resend resendClient,
+                       ResendProperties resendProperties,
                        JwtProperties jwtProperties) {
         this.appUserRepository = appUserRepository;
         this.studioRepository = studioRepository;
         this.teamInvitationRepository = teamInvitationRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
-        this.mailSender = mailSender;
+        this.resendClient = resendClient;
+        this.resendProperties = resendProperties;
         this.key = Keys.hmacShaKeyFor(jwtProperties.secret().getBytes(StandardCharsets.UTF_8));
         this.accessTokenMinutes = jwtProperties.accessTokenMinutes();
         this.refreshTokenDays = jwtProperties.refreshTokenDays();
@@ -476,8 +476,8 @@ public class AuthService {
                                        boolean isNewVerificationCycle,
                                        boolean consumeImmediateResend) {
         try {
-            var name  = existingUser.getName();
-            var code  = generateVerificationCode();
+            var name = existingUser.getName();
+            var code = generateVerificationCode();
 
             existingUser.setVerificationCode(code);
             existingUser.setVerificationCodeExpiresAt(now.plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
@@ -489,17 +489,26 @@ public class AuthService {
             }
             appUserRepository.save(existingUser);
 
+            var displayName = (name != null && !name.isBlank()) ? name : "";
             var text =
-                    "Ciao " + (name != null ? name : "") + ",\n\n" +
-                            "Il tuo codice di verifica è: " + code + "\n\n" +
-                            "Il codice scade tra " + CODE_EXPIRATION_MINUTES + " minuti.\n\n" +
-                            "Se non hai richiesto questa registrazione, ignora questa email.\n\n" +
-                            "— Prenota24";
-            
-            var message = getSimpleMailMessage(email, "Prenota24 – Codice di verifica", text);
-            mailSender.send(message);
+                    "Ciao " + displayName + ",\n\n" +
+                    "Il tuo codice di verifica è: " + code + "\n\n" +
+                    "Il codice scade tra " + CODE_EXPIRATION_MINUTES + " minuti.\n\n" +
+                    "Se non hai richiesto questa registrazione, ignora questa email.\n\n" +
+                    "— Prenota24";
+
+            var greeting = displayName.isBlank() ? "" : "Ciao <strong>" + BaseEmailLayout.e(displayName) + "</strong>,";
+            var htmlContent = (greeting.isBlank() ? "" : "<p style=\"font-size:16px;color:#111827;margin:0 0 12px 0;\">" + greeting + "</p>\n")
+                    + "<p style=\"font-size:15px;color:#374151;margin:0 0 4px 0;\">Inserisci il codice qui sotto per verificare il tuo account <strong>Prenota24</strong>.</p>\n"
+                    + BaseEmailLayout.codeBlock(code)
+                    + "<p style=\"font-size:14px;color:#6B7280;margin:0 0 6px 0;\">Il codice scade tra <strong>" + CODE_EXPIRATION_MINUTES + " minuti</strong>.</p>\n"
+                    + "<p style=\"font-size:12px;color:#9CA3AF;margin:0;\">Se non hai richiesto questa registrazione, ignora questa email: il tuo account &egrave; al sicuro.</p>";
+            var html = BaseEmailLayout.wrap("Il tuo codice di verifica Prenota24", htmlContent);
+
+            sendTransactionalEmail(email, "Prenota24 – Codice di verifica", text, html);
             logger.info("Verification email sent to {}", email);
-        } catch (MailException e) {
+        } catch (Exception e) {
+            logger.error("Failed to send verification email to {}: {}", email, e.getMessage(), e);
             throw new RuntimeException("Failed to send verification email", e);
         }
     }
@@ -600,8 +609,9 @@ public class AuthService {
             }
             appUserRepository.save(user);
 
+            var displayName = (user.getName() != null && !user.getName().isBlank()) ? user.getName() : "";
             var text =
-                    "Ciao " + (user.getName() != null ? user.getName() : "") + ",\n\n" +
+                    "Ciao " + displayName + ",\n\n" +
                     "Hai richiesto il recupero della tua password su Prenota24.\n\n" +
                     "Il tuo codice di recupero è: " + code + "\n\n" +
                     "Il codice scade tra " + CODE_EXPIRATION_MINUTES + " minuti.\n\n" +
@@ -609,9 +619,17 @@ public class AuthService {
                     "il tuo account è al sicuro.\n\n" +
                     "— Prenota24";
 
-            var message = getSimpleMailMessage(user.getEmail(), "Prenota24 – Recupero password", text);
-            mailSender.send(message);
-        } catch (MailException e) {
+            var greeting = displayName.isBlank() ? "" : "Ciao <strong>" + BaseEmailLayout.e(displayName) + "</strong>,";
+            var htmlContent = (greeting.isBlank() ? "" : "<p style=\"font-size:16px;color:#111827;margin:0 0 12px 0;\">" + greeting + "</p>\n")
+                    + "<p style=\"font-size:15px;color:#374151;margin:0 0 4px 0;\">Hai richiesto il recupero della tua password. Usa il codice qui sotto per impostarne una nuova.</p>\n"
+                    + BaseEmailLayout.codeBlock(code)
+                    + "<p style=\"font-size:14px;color:#6B7280;margin:0 0 6px 0;\">Il codice scade tra <strong>" + CODE_EXPIRATION_MINUTES + " minuti</strong>.</p>\n"
+                    + "<p style=\"font-size:12px;color:#9CA3AF;margin:0;\">Se non hai richiesto il recupero della password, ignora questa email: il tuo account &egrave; al sicuro.</p>";
+            var html = BaseEmailLayout.wrap("Recupero password Prenota24", htmlContent);
+
+            sendTransactionalEmail(user.getEmail(), "Prenota24 – Recupero password", text, html);
+        } catch (Exception e) {
+            logger.error("Failed to send password reset email to {}: {}", user.getEmail(), e.getMessage(), e);
             throw new RuntimeException("Failed to send password reset email", e);
         }
     }
@@ -635,12 +653,22 @@ public class AuthService {
         return lastSentAt.plus(PASSWORD_RESET_RESEND_COOLDOWN_SECONDS, ChronoUnit.SECONDS).isAfter(now);
     }
 
-    private @NonNull SimpleMailMessage getSimpleMailMessage(String email, String subject, String text) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(mailFrom);
-        message.setTo(email);
-        message.setSubject(subject);
-        message.setText(text);
-        return message;
+    /**
+     * Invia una email transazionale tramite Resend HTTP API.
+     * Lancia eccezione in caso di errore; il caller gestisce il logging e il rethrow.
+     *
+     * @param text  plain-text fallback
+     * @param html  branded HTML version
+     */
+    private void sendTransactionalEmail(String to, String subject, String text, String html) throws Exception {
+        var from = resendProperties.fromName() + " <" + resendProperties.fromAddress() + ">";
+        var options = CreateEmailOptions.builder()
+                .from(from)
+                .to(to)
+                .subject(subject)
+                .text(text)
+                .html(html)
+                .build();
+        resendClient.emails().send(options);
     }
 }

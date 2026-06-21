@@ -28,29 +28,17 @@ spring:
   flyway:
     enabled: true
 
-  mail:
-    host: ${MAIL_HOST}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME}
-    password: ${MAIL_PASSWORD}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-          ssl:
-            # Disabilitato: porta 465 (SMTPS) bloccata da Render e molti PaaS.
-            # Usiamo porta 587 con STARTTLS, supportata da tutti i provider incluso Aruba.
-            enable: false
-        from: ${MAIL_FROM}
 
   task:
     execution:
       pool:
         core-size: 4
         max-size: 16
+
+resend:
+  api-key: ${RESEND_API_KEY}
+  from-address: ${RESEND_FROM_ADDRESS}
+  from-name: ${RESEND_FROM_NAME:Prenota24}
 
 jwt:
   secret: ${JWT_SECRET}

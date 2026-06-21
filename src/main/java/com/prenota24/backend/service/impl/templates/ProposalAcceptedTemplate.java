@@ -1,13 +1,15 @@
 package com.prenota24.backend.service.impl.templates;
 
+import org.springframework.stereotype.Component;
+
 import com.prenota24.backend.domain.Appointment;
 import com.prenota24.backend.domain.NotificationChannel;
 import com.prenota24.backend.domain.NotificationType;
 import com.prenota24.backend.domain.RecipientType;
 import com.prenota24.backend.dto.EmailPayload;
 import com.prenota24.backend.dto.NotificationPayload;
+import com.prenota24.backend.email.BaseEmailLayout;
 import com.prenota24.backend.service.NotificationTemplate;
-import org.springframework.stereotype.Component;
 
 /**
  * Notifies the PROFESSIONAL that the client accepted the proposed time.
@@ -54,7 +56,27 @@ public class ProposalAcceptedTemplate implements NotificationTemplate {
                 Prenota24
                 """.formatted(professionalName, clientFullName, clientFullName, serviceName, date, time, endTime);
 
-        var email = new EmailPayload(apt.getProfessional().getEmail(), professionalName, subject, body);
+        String[][] rows = {
+            { "Cliente",    BaseEmailLayout.e(clientFullName) },
+            { "Prestazione", BaseEmailLayout.e(serviceName) },
+            { "Data",       BaseEmailLayout.e(date) },
+            { "Orario",     BaseEmailLayout.e(time) + " &ndash; " + BaseEmailLayout.e(endTime) }
+        };
+
+        var content = "<p style=\"font-size:16px;color:#111827;margin:0 0 12px 0;\">"
+            + "Gentile <strong>" + BaseEmailLayout.e(professionalName) + "</strong>,</p>\n"
+            + "<p style=\"font-size:15px;color:#374151;margin:0 0 4px 0;\">Il cliente <strong>"
+            + BaseEmailLayout.e(clientFullName) + "</strong> ha "
+            + BaseEmailLayout.successBadge("accettato") + " il nuovo orario da lei proposto.</p>\n"
+            + BaseEmailLayout.infoTable(rows)
+            + "<p style=\"font-size:14px;color:#6B7280;margin:0 0 24px 0;\">"
+            + "L&rsquo;appuntamento &egrave; ora <strong>confermato</strong> al nuovo orario.</p>\n"
+            + "<p style=\"font-size:14px;color:#374151;margin:0;\">Cordiali saluti,<br>"
+            + "<strong>Prenota24</strong></p>";
+
+        var html = BaseEmailLayout.wrap("Proposta orario accettata da " + clientFullName, content);
+
+        var email = new EmailPayload(apt.getProfessional().getEmail(), professionalName, subject, body, html);
 
         return new NotificationPayload(
                 NotificationType.PROPOSAL_ACCEPTED,

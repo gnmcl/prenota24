@@ -19,14 +19,11 @@ spring:
         jdbc:
           time_zone: UTC
 
-  mail:
-    host: ${MAIL_HOST:smtp.aruba.it}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        from: ${MAIL_FROM:dev@prenota24.it}
+
+resend:
+  api-key: ${RESEND_API_KEY:re_test_placeholder}
+  from-address: ${RESEND_FROM_ADDRESS}
+  from-name: ${RESEND_FROM_NAME:Prenota24 Dev}
 
 jwt:
   secret: dev-only-secret-change-in-production-min-32-chars!!
