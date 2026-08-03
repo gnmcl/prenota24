@@ -65,12 +65,26 @@ public class Appointment {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
-    /** Slot alternativo proposto dal professionista */
+    /** Slot alternativo proposto dal professionista (proposta principale — obbligatoria) */
     @Column(name = "proposed_start")
     private Instant proposedStart;
 
     @Column(name = "proposed_end")
     private Instant proposedEnd;
+
+    /** Seconda proposta opzionale */
+    @Column(name = "proposed_start_2")
+    private Instant proposedStart2;
+
+    @Column(name = "proposed_end_2")
+    private Instant proposedEnd2;
+
+    /** Terza proposta opzionale */
+    @Column(name = "proposed_start_3")
+    private Instant proposedStart3;
+
+    @Column(name = "proposed_end_3")
+    private Instant proposedEnd3;
 
     @Column(name = "cancellation_reason", columnDefinition = "TEXT")
     private String cancellationReason;

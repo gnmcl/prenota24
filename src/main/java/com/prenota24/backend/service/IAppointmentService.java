@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import com.prenota24.backend.domain.CancelledBy;
+import com.prenota24.backend.dto.AcceptProposalRequest;
 import com.prenota24.backend.dto.AppointmentResponse;
 import com.prenota24.backend.dto.CancelAppointmentRequest;
 import com.prenota24.backend.dto.CreateAppointmentRequest;
@@ -35,7 +36,7 @@ public interface IAppointmentService {
 
     AppointmentResponse proposeNewTime(UUID id, ProposeNewTimeRequest request, UUID studioId);
 
-    AppointmentResponse acceptProposal(String token);
+    AppointmentResponse acceptProposal(String token, AcceptProposalRequest request);
 
     AppointmentResponse rejectProposal(String token);
 

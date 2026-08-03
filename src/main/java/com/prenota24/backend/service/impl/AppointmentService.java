@@ -22,7 +22,11 @@ import com.prenota24.backend.domain.AppointmentAction;
 import com.prenota24.backend.domain.AppointmentCapacityLevel;
 import com.prenota24.backend.domain.AppointmentStatus;
 import com.prenota24.backend.domain.CancelledBy;
+import com.prenota24.backend.domain.Client;
+import com.prenota24.backend.domain.Professional;
+import com.prenota24.backend.domain.ServiceType;
 import com.prenota24.backend.domain.Studio;
+import com.prenota24.backend.dto.AcceptProposalRequest;
 import com.prenota24.backend.dto.AppointmentResponse;
 import com.prenota24.backend.dto.CancelAppointmentRequest;
 import com.prenota24.backend.dto.CreateAppointmentRequest;
@@ -54,19 +58,10 @@ public class AppointmentService implements IAppointmentService {
     @Override
     @Transactional
     public AppointmentResponse create(CreateAppointmentRequest request, UUID studioId) {
-        var studio = studioRepository.findById(studioId)
-                .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
-
-        var professional = professionalRepository.findByIdAndStudioId(request.professionalId(), studioId)
-                .orElseThrow(() -> new EntityNotFoundException("Professionista non trovato"));
-
-        var client = clientRepository.findByIdAndStudioId(request.clientId(), studioId)
-                .orElseThrow(() -> new EntityNotFoundException("Cliente non trovato"));
-
-        if (request.endDatetime().isBefore(request.startDatetime()) ||
-                request.endDatetime().equals(request.startDatetime())) {
-            throw new IllegalArgumentException("L'orario di fine deve essere successivo a quello di inizio");
-        }
+        var studio = findStudio(studioId);
+        var professional = findProfessional(request.professionalId(), studioId);
+        var client = findClient(request.clientId(), studioId);
+        validateTimeRange(request.startDatetime(), request.endDatetime());
 
         var builder = Appointment.builder()
                 .studio(studio)
@@ -79,9 +74,7 @@ public class AppointmentService implements IAppointmentService {
                 .status(request.confirmImmediately() ? AppointmentStatus.CONFIRMED : AppointmentStatus.REQUESTED);
 
         if (request.serviceTypeId() != null) {
-            var serviceType = serviceTypeRepository.findByIdAndStudioId(request.serviceTypeId(), studioId)
-                    .orElseThrow(() -> new EntityNotFoundException("Tipo di servizio non trovato"));
-            builder.serviceType(serviceType);
+            builder.serviceType(findServiceType(request.serviceTypeId(), studioId));
         }
 
         var appointment = appointmentRepository.save(builder.build());
@@ -101,15 +94,16 @@ public class AppointmentService implements IAppointmentService {
         boolean hasStatus = status != null && !status.isBlank();
         boolean hasProfessional = professionalId != null;
         boolean hasDateRange = startDate != null && endDate != null;
+        var appointmentStatus = hasStatus ? AppointmentStatus.valueOf(status) : null;
 
         if (hasDateRange) {
-            Instant from = startDate.atStartOfDay(ZoneOffset.UTC).toInstant();
-            Instant to = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+            var from = startDate.atStartOfDay(ZoneOffset.UTC).toInstant();
+            var to = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
 
             if (hasStatus) {
                 return appointmentRepository
                         .findByStudioIdAndStatusAndDateRange(
-                                studioId, AppointmentStatus.valueOf(status), from, to, pageable)
+                                studioId, appointmentStatus, from, to, pageable)
                         .map(this::toResponse);
             }
             return appointmentRepository
@@ -120,10 +114,10 @@ public class AppointmentService implements IAppointmentService {
         Page<Appointment> page;
         if (hasStatus && hasProfessional) {
             page = appointmentRepository.findByStudioIdAndStatusAndProfessionalId(
-                    studioId, AppointmentStatus.valueOf(status), professionalId, pageable);
+                    studioId, appointmentStatus, professionalId, pageable);
         } else if (hasStatus) {
             page = appointmentRepository.findByStudioIdAndStatus(
-                    studioId, AppointmentStatus.valueOf(status), pageable);
+                    studioId, appointmentStatus, pageable);
         } else if (hasProfessional) {
             page = appointmentRepository.findByStudioIdAndProfessionalId(studioId, professionalId, pageable);
         } else {
@@ -140,39 +134,14 @@ public class AppointmentService implements IAppointmentService {
         if (request.notes() != null) appointment.setNotes(request.notes());
 
         if (request.serviceTypeId() != null) {
-            var serviceType = serviceTypeRepository.findByIdAndStudioId(request.serviceTypeId(), studioId)
-                    .orElseThrow(() -> new EntityNotFoundException("Tipo di servizio non trovato"));
-            appointment.setServiceType(serviceType);
+            appointment.setServiceType(findServiceType(request.serviceTypeId(), studioId));
         }
 
         if (request.professionalId() != null) {
-            var professional = professionalRepository.findByIdAndStudioId(request.professionalId(), studioId)
-                    .orElseThrow(() -> new EntityNotFoundException("Professionista non trovato"));
-            appointment.setProfessional(professional);
+            appointment.setProfessional(findProfessional(request.professionalId(), studioId));
         }
 
-        // Handle reschedule
-        if (request.startDatetime() != null && request.endDatetime() != null) {
-            if (request.endDatetime().isBefore(request.startDatetime()) ||
-                    request.endDatetime().equals(request.startDatetime())) {
-                throw new IllegalArgumentException("L'orario di fine deve essere successivo a quello di inizio");
-            }
-
-            // Check for overlapping appointments (excluding this one)
-            long conflicts = appointmentRepository.countConflictingAppointments(
-                    appointment.getProfessional().getId(),
-                    request.startDatetime(),
-                    request.endDatetime(),
-                    appointment.getId()
-            );
-
-            if (conflicts > 0) {
-                throw new SlotNotAvailableException("L'orario scelto si sovrappone con un altro appuntamento");
-            }
-
-            appointment.setStartDatetime(request.startDatetime());
-            appointment.setEndDatetime(request.endDatetime());
-        }
+        rejectDirectTimeUpdate(request, appointment.getStatus());
 
         appointment = appointmentRepository.save(appointment);
         return toResponse(appointment);
@@ -182,7 +151,7 @@ public class AppointmentService implements IAppointmentService {
     @Transactional
     public AppointmentResponse confirm(UUID id, UUID studioId) {
         var appointment = findByIdAndStudio(id, studioId);
-        appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.CONFIRM));
+        transition(appointment, AppointmentAction.CONFIRM);
         appointment = appointmentRepository.save(appointment);
         notificationService.scheduleForTransition(appointment, AppointmentAction.CONFIRM);
         return toResponse(appointment);
@@ -192,7 +161,7 @@ public class AppointmentService implements IAppointmentService {
     @Transactional
     public AppointmentResponse cancel(UUID id, CancelAppointmentRequest request, CancelledBy cancelledBy, UUID studioId) {
         var appointment = findByIdAndStudio(id, studioId);
-        appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.CANCEL));
+        transition(appointment, AppointmentAction.CANCEL);
         appointment.setCancellationReason(request != null ? request.reason() : null);
         appointment.setCancelledBy(cancelledBy);
         appointment = appointmentRepository.save(appointment);
@@ -204,7 +173,7 @@ public class AppointmentService implements IAppointmentService {
     @Transactional
     public AppointmentResponse complete(UUID id, UUID studioId) {
         var appointment = findByIdAndStudio(id, studioId);
-        appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.COMPLETE));
+        transition(appointment, AppointmentAction.COMPLETE);
         appointment = appointmentRepository.save(appointment);
         return toResponse(appointment);
     }
@@ -213,7 +182,7 @@ public class AppointmentService implements IAppointmentService {
     @Transactional
     public AppointmentResponse noShow(UUID id, UUID studioId) {
         var appointment = findByIdAndStudio(id, studioId);
-        appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.NO_SHOW));
+        transition(appointment, AppointmentAction.NO_SHOW);
         appointment = appointmentRepository.save(appointment);
         return toResponse(appointment);
     }
@@ -223,21 +192,11 @@ public class AppointmentService implements IAppointmentService {
     public AppointmentResponse proposeNewTime(UUID id, ProposeNewTimeRequest request, UUID studioId) {
         var appointment = findByIdAndStudio(id, studioId);
 
-        // Check conflicts on proposed time
-        long conflicts = appointmentRepository.countConflictingAppointments(
-                appointment.getProfessional().getId(),
-                request.proposedStart(),
-                request.proposedEnd(),
-                appointment.getId()
-        );
+        checkConflict(appointment.getProfessional().getId(), request.proposedStart(), request.proposedEnd(),
+                appointment.getId(), "L'orario proposto si sovrappone con un altro appuntamento");
 
-        if (conflicts > 0) {
-            throw new SlotNotAvailableException("L'orario proposto si sovrappone con un altro appuntamento");
-        }
-
-        appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.PROPOSE_NEW_TIME));
-        appointment.setProposedStart(request.proposedStart());
-        appointment.setProposedEnd(request.proposedEnd());
+        transition(appointment, AppointmentAction.PROPOSE_NEW_TIME);
+        setProposals(appointment, request);
         appointment = appointmentRepository.save(appointment);
         notificationService.scheduleForTransition(appointment, AppointmentAction.PROPOSE_NEW_TIME);
         return toResponse(appointment);
@@ -245,20 +204,22 @@ public class AppointmentService implements IAppointmentService {
 
     @Override
     @Transactional
-    public AppointmentResponse acceptProposal(String token) {
+    public AppointmentResponse acceptProposal(String token, AcceptProposalRequest request) {
         var appointment = findByToken(token);
-        appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.ACCEPT_PROPOSAL));
 
-        // Swap proposed times into actual times
-        appointment.setStartDatetime(appointment.getProposedStart());
-        appointment.setEndDatetime(appointment.getProposedEnd());
-        appointment.setProposedStart(null);
-        appointment.setProposedEnd(null);
+        if (!hasMatchingProposal(appointment, request)) {
+            throw new IllegalArgumentException("L'orario selezionato non corrisponde a nessuna delle proposte disponibili");
+        }
 
+        checkConflict(appointment.getProfessional().getId(),
+                request.selectedStart(), request.selectedEnd(), appointment.getId(), "Slot selezionato");
+
+        transition(appointment, AppointmentAction.ACCEPT_PROPOSAL);
+        appointment.setStartDatetime(request.selectedStart());
+        appointment.setEndDatetime(request.selectedEnd());
+        clearAllProposals(appointment);
         appointment = appointmentRepository.save(appointment);
-        // Notifica il professionista che il cliente ha accettato
         notificationService.scheduleForTransition(appointment, AppointmentAction.ACCEPT_PROPOSAL);
-        // Invia al cliente la conferma con i dettagli aggiornati
         notificationService.scheduleForTransition(appointment, AppointmentAction.CONFIRM);
         return toResponse(appointment);
     }
@@ -267,10 +228,11 @@ public class AppointmentService implements IAppointmentService {
     @Transactional
     public AppointmentResponse rejectProposal(String token) {
         var appointment = findByToken(token);
-        appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.REJECT_PROPOSAL));
-        appointment.setProposedStart(null);
-        appointment.setProposedEnd(null);
+        transition(appointment, AppointmentAction.REJECT_PROPOSAL);
+        appointment.setCancelledBy(CancelledBy.CLIENT);
+        clearAllProposals(appointment);
         appointment = appointmentRepository.save(appointment);
+        notificationService.scheduleForTransition(appointment, AppointmentAction.REJECT_PROPOSAL);
         return toResponse(appointment);
     }
 
@@ -287,12 +249,11 @@ public class AppointmentService implements IAppointmentService {
             throw new IllegalArgumentException("Il range massimo per il calendario è di 366 giorni");
         }
 
-        var studio = studioRepository.findById(studioId)
-                .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
+        var studio = findStudio(studioId);
 
-        ZoneId zone = ZoneId.of(studio.getTimezone() != null ? studio.getTimezone() : "Europe/Rome");
-        Instant from = startDate.atStartOfDay(zone).toInstant();
-        Instant to = endDate.plusDays(1).atStartOfDay(zone).toInstant();
+        var zone = ZoneId.of(studio.getTimezone() != null ? studio.getTimezone() : "Europe/Rome");
+        var from = startDate.atStartOfDay(zone).toInstant();
+        var to = endDate.plusDays(1).atStartOfDay(zone).toInstant();
 
         Map<LocalDate, Long> countsMap = appointmentRepository.findActiveInRange(studioId, from, to)
                 .stream()
@@ -311,9 +272,85 @@ public class AppointmentService implements IAppointmentService {
 
     // ── Helpers ──────────────────────────────────────
 
+    private void validateTimeRange(Instant start, Instant end) {
+        if (!end.isAfter(start)) {
+            throw new IllegalArgumentException("L'orario di fine deve essere successivo a quello di inizio");
+        }
+    }
+
+    private void rejectDirectTimeUpdate(UpdateAppointmentRequest request, AppointmentStatus status) {
+        if ((request.startDatetime() != null || request.endDatetime() != null)
+                && (status == AppointmentStatus.REQUESTED || status == AppointmentStatus.CONFIRMED)) {
+            throw new IllegalArgumentException(
+                    "La modifica diretta dell'orario non è consentita per un appuntamento in stato " + status
+                            + ". Utilizzare il flusso di proposta nuovo orario.");
+        }
+    }
+
+    private void transition(Appointment appointment, AppointmentAction action) {
+        appointment.setStatus(stateMachine.transition(appointment.getStatus(), action));
+    }
+
+    private void checkConflict(UUID professionalId, Instant start, Instant end, UUID excludeId, String slotDescription) {
+        var conflicts = appointmentRepository.countConflictingAppointments(professionalId, start, end, excludeId);
+        if (conflicts > 0) {
+            throw new SlotNotAvailableException(slotDescription);
+        }
+    }
+
+    private boolean hasMatchingProposal(Appointment appointment, AcceptProposalRequest request) {
+        return matches(request, appointment.getProposedStart(), appointment.getProposedEnd())
+                || matches(request, appointment.getProposedStart2(), appointment.getProposedEnd2())
+                || matches(request, appointment.getProposedStart3(), appointment.getProposedEnd3());
+    }
+
+    private boolean matches(AcceptProposalRequest request, Instant start, Instant end) {
+        return start != null && end != null
+                && start.equals(request.selectedStart())
+                && end.equals(request.selectedEnd());
+    }
+
+    private void setProposals(Appointment appointment, ProposeNewTimeRequest request) {
+        appointment.setProposedStart(request.proposedStart());
+        appointment.setProposedEnd(request.proposedEnd());
+        appointment.setProposedStart2(request.proposedStart2());
+        appointment.setProposedEnd2(request.proposedEnd2());
+        appointment.setProposedStart3(request.proposedStart3());
+        appointment.setProposedEnd3(request.proposedEnd3());
+    }
+
+    private void clearAllProposals(Appointment appointment) {
+        appointment.setProposedStart(null);
+        appointment.setProposedEnd(null);
+        appointment.setProposedStart2(null);
+        appointment.setProposedEnd2(null);
+        appointment.setProposedStart3(null);
+        appointment.setProposedEnd3(null);
+    }
+
     private Appointment findByIdAndStudio(UUID id, UUID studioId) {
         return appointmentRepository.findByIdAndStudioId(id, studioId)
                 .orElseThrow(() -> new EntityNotFoundException("Appuntamento non trovato"));
+    }
+
+    private Studio findStudio(UUID studioId) {
+        return studioRepository.findById(studioId)
+                .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
+    }
+
+    private Professional findProfessional(UUID professionalId, UUID studioId) {
+        return professionalRepository.findByIdAndStudioId(professionalId, studioId)
+                .orElseThrow(() -> new EntityNotFoundException("Professionista non trovato"));
+    }
+
+    private Client findClient(UUID clientId, UUID studioId) {
+        return clientRepository.findByIdAndStudioId(clientId, studioId)
+                .orElseThrow(() -> new EntityNotFoundException("Cliente non trovato"));
+    }
+
+    private ServiceType findServiceType(UUID serviceTypeId, UUID studioId) {
+        return serviceTypeRepository.findByIdAndStudioId(serviceTypeId, studioId)
+                .orElseThrow(() -> new EntityNotFoundException("Tipo di servizio non trovato"));
     }
 
     private Appointment findByToken(String token) {
@@ -352,6 +389,10 @@ public class AppointmentService implements IAppointmentService {
                 a.getNotes(),
                 a.getProposedStart(),
                 a.getProposedEnd(),
+                a.getProposedStart2(),
+                a.getProposedEnd2(),
+                a.getProposedStart3(),
+                a.getProposedEnd3(),
                 a.getCancellationReason(),
                 a.getCancelledBy(),
                 a.getToken(),

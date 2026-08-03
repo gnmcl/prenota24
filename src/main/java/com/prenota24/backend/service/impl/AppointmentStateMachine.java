@@ -36,7 +36,7 @@ public class AppointmentStateMachine {
                             : invalid(current, action);
             case REJECT_PROPOSAL ->
                     current == AppointmentStatus.PROPOSED_NEW_TIME
-                            ? AppointmentStatus.REQUESTED
+                            ? AppointmentStatus.CANCELLED
                             : invalid(current, action);
         };
     }

@@ -1,14 +1,22 @@
 package com.prenota24.backend.controller;
 
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.prenota24.backend.domain.CancelledBy;
+import com.prenota24.backend.dto.AcceptProposalRequest;
 import com.prenota24.backend.dto.AppointmentResponse;
 import com.prenota24.backend.dto.CancelAppointmentRequest;
-import com.prenota24.backend.domain.CancelledBy;
 import com.prenota24.backend.service.IAppointmentService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/public/appointments")
@@ -27,8 +35,9 @@ public class PublicAppointmentController {
 
     @PostMapping("/{token}/accept")
     @Operation(summary = "Accetta proposta nuovo orario", description = "Transizione: PROPOSED_NEW_TIME → CONFIRMED")
-    public AppointmentResponse acceptProposal(@PathVariable String token) {
-        return appointmentService.acceptProposal(token);
+    public AppointmentResponse acceptProposal(@PathVariable String token,
+                                              @RequestBody AcceptProposalRequest request) {
+        return appointmentService.acceptProposal(token, request);
     }
 
     @PostMapping("/{token}/reject")

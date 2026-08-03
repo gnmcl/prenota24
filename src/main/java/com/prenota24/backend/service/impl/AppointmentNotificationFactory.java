@@ -44,7 +44,8 @@ public class AppointmentNotificationFactory {
             case CANCEL          -> buildForCancel(apt);
             case PROPOSE_NEW_TIME -> List.of(build(NotificationType.PROPOSAL_RECEIVED, apt));
             case ACCEPT_PROPOSAL -> buildForAcceptProposal(apt);
-            default              -> List.of(); // COMPLETE, NO_SHOW, REJECT_PROPOSAL — no notification
+            case REJECT_PROPOSAL -> buildForRejectProposal(apt);
+            default              -> List.of(); // COMPLETE, NO_SHOW — no notification
         };
     }
 
@@ -81,6 +82,18 @@ public class AppointmentNotificationFactory {
             return List.of();
         }
         return List.of(build(NotificationType.PROPOSAL_ACCEPTED, apt));
+    }
+
+    private List<NotificationPayload> buildForRejectProposal(Appointment apt) {
+        var payloads = new java.util.ArrayList<NotificationPayload>();
+        payloads.add(build(NotificationType.PROPOSAL_REJECTED_CLIENT, apt));
+        if (apt.getProfessional().getEmail() != null) {
+            payloads.add(build(NotificationType.PROPOSAL_REJECTED_STUDIO, apt));
+        } else {
+            logger.warn("Professional {} has no email — skipping PROPOSAL_REJECTED_STUDIO notification",
+                    apt.getProfessional().getId());
+        }
+        return java.util.Collections.unmodifiableList(payloads);
     }
 }
 
