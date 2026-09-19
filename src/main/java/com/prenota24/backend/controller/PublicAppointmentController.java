@@ -1,5 +1,6 @@
 package com.prenota24.backend.controller;
 
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,7 +37,7 @@ public class PublicAppointmentController {
     @PostMapping("/{token}/accept")
     @Operation(summary = "Accetta proposta nuovo orario", description = "Transizione: PROPOSED_NEW_TIME → CONFIRMED")
     public AppointmentResponse acceptProposal(@PathVariable String token,
-                                              @RequestBody AcceptProposalRequest request) {
+                                              @RequestBody @Valid AcceptProposalRequest request) {
         return appointmentService.acceptProposal(token, request);
     }
 

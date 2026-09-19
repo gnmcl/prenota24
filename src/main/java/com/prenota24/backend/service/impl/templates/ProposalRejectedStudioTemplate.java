@@ -12,8 +12,7 @@ import com.prenota24.backend.email.BaseEmailLayout;
 import com.prenota24.backend.service.NotificationTemplate;
 
 /**
- * Notifica il PROFESSIONISTA che il cliente ha rifiutato tutte le proposte
- * e l'appuntamento è stato annullato.
+ * Notifica il PROFESSIONISTA che il cliente ha rifiutato le proposte di un nuovo orario.
  */
 @Component
 public class ProposalRejectedStudioTemplate implements NotificationTemplate {
@@ -27,8 +26,6 @@ public class ProposalRejectedStudioTemplate implements NotificationTemplate {
     public NotificationPayload build(Appointment apt) {
         var professionalName = apt.getProfessional().getFirstName();
         var clientFullName = apt.getClient().getFirstName() + " " + apt.getClient().getLastName();
-        var studio = apt.getStudio().getName();
-
         var subject = "Nessuna proposta accettata — " + clientFullName;
 
         var body = """
@@ -36,7 +33,7 @@ public class ProposalRejectedStudioTemplate implements NotificationTemplate {
 
                 Il cliente %s ha rifiutato tutte le proposte di orario.
 
-                L'appuntamento è stato annullato.
+                L'appuntamento è di nuovo in attesa di conferma.
 
                 Cordiali saluti,
                 Prenota24
@@ -47,7 +44,7 @@ public class ProposalRejectedStudioTemplate implements NotificationTemplate {
             + "<p style=\"font-size:15px;color:#374151;margin:0 0 4px 0;\">Il cliente <strong>"
             + BaseEmailLayout.e(clientFullName) + "</strong> ha rifiutato tutte le proposte di orario.</p>\n"
             + "<p style=\"font-size:15px;color:#374151;margin:0 0 24px 0;\">"
-            + "L&rsquo;appuntamento &egrave; stato <strong>annullato</strong>.</p>\n"
+            + "L&rsquo;appuntamento &egrave; di nuovo <strong>in attesa di conferma</strong>.</p>\n"
             + "<p style=\"font-size:14px;color:#374151;margin:0;\">Cordiali saluti,<br>"
             + "<strong>Prenota24</strong></p>";
 

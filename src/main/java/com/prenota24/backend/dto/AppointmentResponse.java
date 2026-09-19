@@ -10,6 +10,7 @@ public record AppointmentResponse(
         UUID id,
         UUID studioId,
         String studioSlug,
+        String studioTimezone,
         UUID professionalId,
         String professionalFullName,
         UUID clientId,

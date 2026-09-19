@@ -52,6 +52,8 @@ public class AppointmentService implements IAppointmentService {
     private final ServiceTypeRepository serviceTypeRepository;
     private final StudioRepository studioRepository;
     private final AppointmentStateMachine stateMachine;
+    private final AppointmentProposalValidator proposalValidator;
+    private final ServiceTypeAssignmentValidator assignmentValidator;
 
     private final NotificationService notificationService;
 
@@ -74,7 +76,9 @@ public class AppointmentService implements IAppointmentService {
                 .status(request.confirmImmediately() ? AppointmentStatus.CONFIRMED : AppointmentStatus.REQUESTED);
 
         if (request.serviceTypeId() != null) {
-            builder.serviceType(findServiceType(request.serviceTypeId(), studioId));
+            var serviceType = findServiceType(request.serviceTypeId(), studioId);
+            assignmentValidator.validate(serviceType, professional.getId());
+            builder.serviceType(serviceType);
         }
 
         var appointment = appointmentRepository.save(builder.build());
@@ -192,8 +196,7 @@ public class AppointmentService implements IAppointmentService {
     public AppointmentResponse proposeNewTime(UUID id, ProposeNewTimeRequest request, UUID studioId) {
         var appointment = findByIdAndStudio(id, studioId);
 
-        checkConflict(appointment.getProfessional().getId(), request.proposedStart(), request.proposedEnd(),
-                appointment.getId(), "L'orario proposto si sovrappone con un altro appuntamento");
+        proposalValidator.validate(appointment, request);
 
         transition(appointment, AppointmentAction.PROPOSE_NEW_TIME);
         setProposals(appointment, request);
@@ -207,6 +210,9 @@ public class AppointmentService implements IAppointmentService {
     public AppointmentResponse acceptProposal(String token, AcceptProposalRequest request) {
         var appointment = findByToken(token);
 
+        if (!request.selectedStart().isAfter(Instant.now())) {
+            throw new IllegalArgumentException("Non è possibile accettare una proposta scaduta");
+        }
         if (!hasMatchingProposal(appointment, request)) {
             throw new IllegalArgumentException("L'orario selezionato non corrisponde a nessuna delle proposte disponibili");
         }
@@ -229,7 +235,6 @@ public class AppointmentService implements IAppointmentService {
     public AppointmentResponse rejectProposal(String token) {
         var appointment = findByToken(token);
         transition(appointment, AppointmentAction.REJECT_PROPOSAL);
-        appointment.setCancelledBy(CancelledBy.CLIENT);
         clearAllProposals(appointment);
         appointment = appointmentRepository.save(appointment);
         notificationService.scheduleForTransition(appointment, AppointmentAction.REJECT_PROPOSAL);
@@ -376,6 +381,7 @@ public class AppointmentService implements IAppointmentService {
                 a.getId(),
                 a.getStudio().getId(),
                 a.getStudio().getSlug(),
+                a.getStudio().getTimezone() != null ? a.getStudio().getTimezone() : "Europe/Rome",
                 a.getProfessional().getId(),
                 a.getProfessional().getFirstName() + " " + a.getProfessional().getLastName(),
                 a.getClient().getId(),
