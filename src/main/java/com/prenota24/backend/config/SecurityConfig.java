@@ -50,6 +50,7 @@ public class SecurityConfig {
                         .requestMatchers("/health").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
+                        .requestMatchers("/api/webhooks/whatsapp").permitAll()
                         .requestMatchers(
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",

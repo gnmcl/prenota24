@@ -35,6 +35,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final Duration VERIFICATION_EMAIL_WINDOW = Duration.ofMinutes(1);
     private static final int PASSWORD_RECOVER_MAX_ATTEMPTS = 3;
     private static final Duration PASSWORD_RECOVER_WINDOW = Duration.ofMinutes(1);
+    private static final int PUBLIC_BOOKING_MAX_ATTEMPTS = 10;
+    private static final Duration PUBLIC_BOOKING_WINDOW = Duration.ofMinutes(5);
     private static final String REGISTER_PATH = "/api/auth/register";
     private static final String RESEND_VERIFICATION_PATH = "/api/auth/resend-verification";
     private static final String PASSWORD_RECOVER_PATH = "/api/auth/password-recover";
@@ -42,12 +44,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> verificationEmailBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> passwordRecoverBuckets = new ConcurrentHashMap<>();
+    private final Map<String, Bucket> publicBookingBuckets = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return !path.startsWith("/api/auth/");
+        return !path.startsWith("/api/auth/") && !isPublicBookingCreation(request);
     }
 
     @Override
@@ -56,6 +59,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
 
         String ip = resolveClientIp(request);
+        if (isPublicBookingCreation(request)) {
+            Bucket bookingBucket = publicBookingBuckets.computeIfAbsent(ip, k -> createPublicBookingBucket());
+            if (!bookingBucket.tryConsume(1)) {
+                writeRateLimitedResponse(request, response);
+                return;
+            }
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         Bucket globalBucket = buckets.computeIfAbsent(ip, k -> createAuthBucket());
         if (!globalBucket.tryConsume(1)) {
             writeRateLimitedResponse(request, response);
@@ -115,6 +128,22 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 .refillIntervally(VERIFICATION_EMAIL_MAX_ATTEMPTS, VERIFICATION_EMAIL_WINDOW)
                 .build())
             .build();
+    }
+
+    private Bucket createPublicBookingBucket() {
+        return Bucket.builder()
+                .addLimit(Bandwidth.builder()
+                        .capacity(PUBLIC_BOOKING_MAX_ATTEMPTS)
+                        .refillIntervally(PUBLIC_BOOKING_MAX_ATTEMPTS, PUBLIC_BOOKING_WINDOW)
+                        .build())
+                .build();
+    }
+
+    private boolean isPublicBookingCreation(HttpServletRequest request) {
+        var path = request.getRequestURI();
+        return "POST".equals(request.getMethod())
+                && path.startsWith("/api/public/book/")
+                && path.endsWith("/appointments");
     }
 
     private String resolveClientIp(HttpServletRequest request) {

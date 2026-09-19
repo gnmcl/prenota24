@@ -12,6 +12,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.prenota24.backend.dto.ErrorResponse;
 
@@ -173,6 +174,24 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(MessagingConflictException.class)
+    public ResponseEntity<ErrorResponse> handleMessagingConflict(
+            MessagingConflictException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of(409, "IDEMPOTENCY_CONFLICT", ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(MessageSendBlockedException.class)
+    public ResponseEntity<ErrorResponse> handleMessageSendBlocked(
+            MessageSendBlockedException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
+                .body(ErrorResponse.of(422, "MESSAGE_SEND_BLOCKED", ex.getReason(), request.getRequestURI()));
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleConflict(
             DataIntegrityViolationException ex,
@@ -226,6 +245,14 @@ public class GlobalExceptionHandler {
     }
 
     /* ---------- FALLBACK ---------- */
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ErrorResponse> handleResponseStatus(
+            ResponseStatusException ex, HttpServletRequest request) {
+        return ResponseEntity.status(ex.getStatusCode())
+                .body(ErrorResponse.of(ex.getStatusCode().value(), "REQUEST_REJECTED",
+                        ex.getReason() == null ? "Richiesta rifiutata" : ex.getReason(), request.getRequestURI()));
+    }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(

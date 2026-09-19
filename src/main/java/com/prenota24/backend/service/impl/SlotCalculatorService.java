@@ -34,6 +34,10 @@ public class SlotCalculatorService {
      */
     public List<TimeSlotResponse> calculateSlots(UUID professionalId, LocalDate date,
                                                   int durationMinutes, Studio studio) {
+        if (durationMinutes <= 0 || durationMinutes > 1440) {
+            throw new IllegalArgumentException("La durata deve essere compresa tra 1 e 1440 minuti");
+        }
+
         ZoneId zone = ZoneId.of(studio.getTimezone() != null ? studio.getTimezone() : "Europe/Rome");
 
         // 1. Get weekly availability for this day of week

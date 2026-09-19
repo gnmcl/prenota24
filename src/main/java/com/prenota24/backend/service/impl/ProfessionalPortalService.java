@@ -61,7 +61,9 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
     private final AvailabilityRepository availabilityRepository;
     private final AvailabilityExceptionRepository exceptionRepository;
     private final AppointmentStateMachine stateMachine;
-        private final SlotCalculatorService slotCalculatorService;
+    private final SlotCalculatorService slotCalculatorService;
+    private final AppointmentProposalValidator proposalValidator;
+    private final ServiceTypeAssignmentValidator assignmentValidator;
 
     private final NotificationService notificationService;
 
@@ -150,6 +152,7 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
         if (request.serviceTypeId() != null) {
             var serviceType = serviceTypeRepository.findByIdAndStudioId(request.serviceTypeId(), studioId)
                     .orElseThrow(() -> new EntityNotFoundException("Tipo di servizio non trovato"));
+            assignmentValidator.validate(serviceType, professionalId);
             builder.serviceType(serviceType);
         }
 
@@ -196,33 +199,21 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
         return toAppointmentResponse(appointment);
     }
 
-        @Override
-        @Transactional
-        public AppointmentResponse proposeNewTime(UUID appointmentId,
-                                                                                          ProposeNewTimeRequest request,
-                                                                                          UUID professionalId,
-                                                                                          UUID studioId) {
-                var appointment = findMyAppointment(appointmentId, professionalId);
+    @Override
+    @Transactional
+    public AppointmentResponse proposeNewTime(UUID appointmentId,
+                                              ProposeNewTimeRequest request,
+                                              UUID professionalId,
+                                              UUID studioId) {
+        var appointment = findMyAppointment(appointmentId, professionalId);
+        proposalValidator.validate(appointment, request);
 
-                long conflicts = appointmentRepository.countConflictingAppointments(
-                                professionalId,
-                                request.proposedStart(),
-                                request.proposedEnd(),
-                                appointmentId
-                );
-                if (conflicts > 0) {
-                        throw new com.prenota24.backend.common.SlotNotAvailableException(
-                                        "L'orario proposto si sovrappone con un altro appuntamento"
-                        );
-                }
-
-                appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.PROPOSE_NEW_TIME));
-                appointment.setProposedStart(request.proposedStart());
-                appointment.setProposedEnd(request.proposedEnd());
-                appointment = appointmentRepository.save(appointment);
-                notificationService.scheduleForTransition(appointment, AppointmentAction.PROPOSE_NEW_TIME);
-                return toAppointmentResponse(appointment);
-        }
+        appointment.setStatus(stateMachine.transition(appointment.getStatus(), AppointmentAction.PROPOSE_NEW_TIME));
+        setProposals(appointment, request);
+        appointment = appointmentRepository.save(appointment);
+        notificationService.scheduleForTransition(appointment, AppointmentAction.PROPOSE_NEW_TIME);
+        return toAppointmentResponse(appointment);
+    }
 
         @Override
         @Transactional(readOnly = true)
@@ -397,11 +388,21 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
                 .orElseThrow(() -> new EntityNotFoundException("Appuntamento non trovato"));
     }
 
+    private void setProposals(Appointment appointment, ProposeNewTimeRequest request) {
+        appointment.setProposedStart(request.proposedStart());
+        appointment.setProposedEnd(request.proposedEnd());
+        appointment.setProposedStart2(request.proposedStart2());
+        appointment.setProposedEnd2(request.proposedEnd2());
+        appointment.setProposedStart3(request.proposedStart3());
+        appointment.setProposedEnd3(request.proposedEnd3());
+    }
+
     private AppointmentResponse toAppointmentResponse(Appointment a) {
         return new AppointmentResponse(
                 a.getId(),
                 a.getStudio().getId(),
                 a.getStudio().getSlug(),
+                a.getStudio().getTimezone() != null ? a.getStudio().getTimezone() : "Europe/Rome",
                 a.getProfessional().getId(),
                 a.getProfessional().getFirstName() + " " + a.getProfessional().getLastName(),
                 a.getClient().getId(),

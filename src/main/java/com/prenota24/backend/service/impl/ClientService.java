@@ -190,6 +190,7 @@ public class ClientService implements IClientService {
                 a.getId(),
                 a.getStudio().getId(),
                 a.getStudio().getSlug(),
+                a.getStudio().getTimezone() != null ? a.getStudio().getTimezone() : "Europe/Rome",
                 a.getProfessional().getId(),
                 a.getProfessional().getFirstName() + " " + a.getProfessional().getLastName(),
                 a.getClient().getId(),

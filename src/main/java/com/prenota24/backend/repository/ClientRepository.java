@@ -36,4 +36,17 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
 
     @Query("SELECT DISTINCT a.client FROM Appointment a WHERE a.professional.id = :professionalId ORDER BY a.client.lastName ASC")
     List<Client> findClientsByProfessionalId(@Param("professionalId") UUID professionalId);
+
+    @Query(value = """
+            SELECT * FROM client c
+            WHERE c.studio_id = :studioId
+              AND btrim(COALESCE(c.phone, '')) ~ '^([+]|00)[0-9 .()/-]+$'
+              AND regexp_replace(
+                    regexp_replace(btrim(COALESCE(c.phone, '')), '^([+]|00)', ''),
+                    '[^0-9]', '', 'g'
+                  ) = :normalizedPhone
+            ORDER BY c.created_at ASC
+            """, nativeQuery = true)
+    List<Client> findByNormalizedPhone(@Param("studioId") UUID studioId,
+                                       @Param("normalizedPhone") String normalizedPhone);
 }
