@@ -18,6 +18,8 @@ public record EventResponse(
         long currentParticipants,
         String status,
         String shareLink,
+        String studioName,
+        String studioPrivacyContactEmail,
         Instant createdAt,
         Instant updatedAt
 ) {

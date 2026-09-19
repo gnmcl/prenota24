@@ -6,5 +6,6 @@ public record StudioPublicResponse(
         String name,
         String slug,
         String timezone,
+        String privacyContactEmail,
         List<ProfessionalResponse> professionals
 ) {}

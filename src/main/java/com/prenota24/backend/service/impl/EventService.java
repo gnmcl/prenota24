@@ -161,6 +161,8 @@ public class EventService implements IEventService {
                 currentParticipants,
                 event.getStatus().toString(),
                 "/e/" + event.getSlug(),
+                event.getStudio().getName(),
+                event.getStudio().getEmail(),
                 event.getCreatedAt(),
                 event.getUpdatedAt()
         );

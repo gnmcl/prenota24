@@ -50,7 +50,7 @@ public class PublicBookingService implements IPublicBookingService {
                 .filter(ProfessionalResponse::active)
                 .toList();
         return new StudioPublicResponse(
-                studio.getName(), studio.getSlug(), timezoneOf(studio), professionals);
+                studio.getName(), studio.getSlug(), timezoneOf(studio), studio.getEmail(), professionals);
     }
 
     @Override
