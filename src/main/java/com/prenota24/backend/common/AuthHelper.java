@@ -32,7 +32,13 @@ public class AuthHelper {
 
     public AppUser getUser(Authentication authentication) {
         UUID userId = getUserId(authentication);
-        return appUserRepository.findById(userId)
+        var user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("Utente non trovato"));
+        // L'access token resta valido fino alla scadenza anche dopo la disattivazione:
+        // il controllo qui chiude subito l'accesso (401, e il refresh poi fallisce).
+        if (!user.isActive()) {
+            throw new JwtAuthenticationException("Account disattivato");
+        }
+        return user;
     }
 }

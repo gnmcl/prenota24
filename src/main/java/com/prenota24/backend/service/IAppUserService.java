@@ -9,6 +9,7 @@ import java.util.UUID;
 public interface IAppUserService {
     /** Crea un utente nello studio dell'admin autenticato ({@code studioId}). */
     AppUserResponse create(CreateAppUserRequest request, UUID studioId);
-    AppUserResponse getById(UUID id);
+    /** Restituisce l'utente solo se appartiene allo studio {@code studioId}. */
+    AppUserResponse getById(UUID id, UUID studioId);
     AppUserResponse update(UUID id, UUID requestingUserId, UpdateAppUserRequest request);
 }

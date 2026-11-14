@@ -33,13 +33,13 @@ public class AppUserController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Dettaglio utente")
-    public AppUserResponse getById(@PathVariable @NotNull UUID id) {
-        return appUserService.getById(id);
+    @Operation(summary = "Dettaglio utente dello stesso studio")
+    public AppUserResponse getById(@PathVariable @NotNull UUID id, Authentication auth) {
+        return appUserService.getById(id, authHelper.getStudioId(auth));
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Aggiorna nome/email utente. Solo l'utente stesso o un ADMIN dello stesso studio.")
+    @Operation(summary = "Aggiorna il nome utente. Solo l'utente stesso o un ADMIN dello stesso studio. L'email si cambia da /api/account/change-email.")
     public AppUserResponse update(@PathVariable UUID id,
                                   @RequestBody @Valid UpdateAppUserRequest request,
                                   Authentication auth) {
