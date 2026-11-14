@@ -15,7 +15,7 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
 
     long countByEventIdAndStatus(UUID eventId, ReservationStatus status);
 
-    boolean existsByEventIdAndGuestEmail(UUID eventId, String guestEmail);
+    boolean existsByEventIdAndGuestEmailIgnoreCase(UUID eventId, String guestEmail);
 
     void deleteAllByEventId(UUID eventId);
 }

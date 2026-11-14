@@ -178,6 +178,8 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
         appointment.setCancellationReason(request != null ? request.reason() : null);
         appointment.setCancelledBy(CancelledBy.PROFESSIONAL);
         appointment = appointmentRepository.save(appointment);
+        // Come per l'annullamento dall'area admin: il cliente deve essere avvisato.
+        notificationService.scheduleForTransition(appointment, AppointmentAction.CANCEL);
         return toAppointmentResponse(appointment);
     }
 
@@ -249,12 +251,14 @@ public class ProfessionalPortalService implements IProfessionalPortalService {
     public ClientSummaryResponse createClient(CreateClientRequest request, UUID professionalId, UUID studioId) {
         var studio = studioRepository.findById(studioId)
                 .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
+        var email = ClientService.normalizeClientEmail(request.email());
+        ClientService.ensureEmailAvailable(clientRepository, studioId, email, null);
 
         var client = Client.builder()
                 .studio(studio)
                 .firstName(request.firstName())
                 .lastName(request.lastName())
-                .email(request.email())
+                .email(email)
                 .phone(request.phone())
                 .notes(request.notes())
                 .tags(request.tags())

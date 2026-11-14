@@ -9,7 +9,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.server.ResponseStatusException;
@@ -144,6 +150,58 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    /**
+     * Validazione dei singoli elementi di una lista nel body (es. {@code List<@Valid X>}):
+     * Spring la segnala con un'eccezione diversa da MethodArgumentNotValidException.
+     */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ErrorResponse> handleMethodValidation(
+            HandlerMethodValidationException ex,
+            HttpServletRequest request) {
+        String message = ex.getAllErrors().stream()
+                .map(error -> error.getDefaultMessage())
+                .distinct()
+                .collect(Collectors.joining(", "));
+        return badRequest("VALIDATION_ERROR", message, request);
+    }
+
+    /* ---------- REQUEST MALFORMATE (prima finivano nel 500 generico) ---------- */
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(
+            HttpMessageNotReadableException ex,
+            HttpServletRequest request) {
+        return badRequest("MALFORMED_REQUEST", "Corpo della richiesta non valido", request);
+    }
+
+    @ExceptionHandler({MethodArgumentTypeMismatchException.class, MissingServletRequestParameterException.class})
+    public ResponseEntity<ErrorResponse> handleBadParameter(
+            Exception ex,
+            HttpServletRequest request) {
+        return badRequest("BAD_PARAMETER", "Parametro mancante o non valido", request);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResource(
+            NoResourceFoundException ex,
+            HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of(404, "NOT_FOUND", "Risorsa non trovata", request.getRequestURI()));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex,
+            HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ErrorResponse.of(405, "METHOD_NOT_ALLOWED", "Metodo non consentito", request.getRequestURI()));
+    }
+
+    private static ResponseEntity<ErrorResponse> badRequest(String code, String message, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), code, message, request.getRequestURI()));
+    }
+
     /* ---------- BUSINESS ERRORS ---------- */
 
     @ExceptionHandler(EntityNotFoundException.class)
@@ -183,6 +241,20 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of(
                         HttpStatus.CONFLICT.value(),
                         "SLOT_NOT_AVAILABLE",
+                        ex.getMessage(),
+                        request.getRequestURI()
+                ));
+    }
+
+    @ExceptionHandler(ResourceInUseException.class)
+    public ResponseEntity<ErrorResponse> handleResourceInUse(
+            ResourceInUseException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "RESOURCE_IN_USE",
                         ex.getMessage(),
                         request.getRequestURI()
                 ));
