@@ -14,7 +14,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
@@ -60,7 +59,7 @@ public class NotificationService {
                 .type(payload.type().name())
                 .recipientId(payload.recipientId())
                 .recipientType(payload.recipientType())
-                .scheduledAt(apt.getStartDatetime().minus(24, ChronoUnit.HOURS))
+                .scheduledAt(ReminderScheduler.reminderTimeFor(apt))
                 .payload(payload.email().toMap())
                 .build();
         return notificationRepository.save(notification);

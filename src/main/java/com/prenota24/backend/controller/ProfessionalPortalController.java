@@ -197,7 +197,7 @@ public class ProfessionalPortalController {
 
     @PutMapping("/availability")
     @Operation(summary = "Imposta disponibilità settimanale (rimpiazza tutte le fasce orarie)")
-    public List<AvailabilityResponse> setAvailability(@RequestBody @Valid List<AvailabilitySlotRequest> slots,
+    public List<AvailabilityResponse> setAvailability(@RequestBody List<@Valid AvailabilitySlotRequest> slots,
                                                        Authentication auth) {
         return portalService.setMyAvailability(
                 authHelper.getProfessionalId(auth),

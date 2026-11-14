@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.text.Normalizer;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.prenota24.backend.common.EmailAlreadyRegisteredException;
+import com.prenota24.backend.common.EmailNormalizer;
 import com.prenota24.backend.common.EmailNotVerifiedException;
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.common.InvalidPasswordResetCodeException;
@@ -108,7 +110,7 @@ public class AuthService {
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        var user = appUserRepository.findByEmail(request.email())
+        var user = appUserRepository.findByEmailIgnoreCase(EmailNormalizer.normalize(request.email()))
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
 
         if (!user.isActive()) {
@@ -133,7 +135,7 @@ public class AuthService {
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
-        Optional<AppUser> existingUser = appUserRepository.findByEmail(request.email());
+        Optional<AppUser> existingUser = appUserRepository.findByEmailIgnoreCase(EmailNormalizer.normalize(request.email()));
 
         if (existingUser.isPresent()) {
             AppUser existing = existingUser.get();
@@ -186,7 +188,7 @@ public class AuthService {
 
         var user = AppUser.builder()
                 .studio(studio)
-                .email(request.email())
+                .email(EmailNormalizer.normalize(request.email()))
                 .name(request.name())
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .role(UserRole.ADMIN)
@@ -206,7 +208,7 @@ public class AuthService {
     @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public LoginResponse verifyEmail(VerifyEmailRequest request) {
         // Utente inesistente: stesso errore del codice errato, per non rivelare quali email esistono.
-        var user = appUserRepository.findByEmail(request.email())
+        var user = appUserRepository.findByEmailIgnoreCase(EmailNormalizer.normalize(request.email()))
                 .orElseThrow(() -> new InvalidVerificationCodeException(INVALID_CODE_MESSAGE));
 
         if (user.isEmailVerified()) {
@@ -252,7 +254,7 @@ public class AuthService {
     @Transactional
     public void resendVerificationCode(ResendVerificationRequest request) {
         // Anti-enumeration: risposta identica (200) se l'utente non esiste o è già verificato.
-        var optUser = appUserRepository.findByEmail(request.email());
+        var optUser = appUserRepository.findByEmailIgnoreCase(EmailNormalizer.normalize(request.email()));
         if (optUser.isEmpty() || optUser.get().isEmailVerified()) {
             return;
         }
@@ -290,13 +292,13 @@ public class AuthService {
             throw new RuntimeException("Questo invito è scaduto");
         }
 
-        if (appUserRepository.findByEmail(invitation.getEmail()).isPresent()) {
+        if (appUserRepository.findByEmailIgnoreCase(EmailNormalizer.normalize(invitation.getEmail())).isPresent()) {
             throw new RuntimeException("Email già registrata");
         }
 
         var user = AppUser.builder()
                 .studio(invitation.getStudio())
-                .email(invitation.getEmail())
+                .email(EmailNormalizer.normalize(invitation.getEmail()))
                 .name(request.name())
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .role(UserRole.PROFESSIONAL)
@@ -316,17 +318,34 @@ public class AuthService {
 
     // ── Refresh token rotation ─────────────────────────────────────
 
-    @Transactional
+    /**
+     * Finestra in cui un refresh token appena ruotato può essere riusato senza essere
+     * considerato rubato: due schede aperte che rinnovano insieme presentano lo stesso token.
+     */
+    static final Duration REFRESH_REUSE_GRACE = Duration.ofSeconds(30);
+
+    // noRollbackFor: la revoca di tutti i token in caso di riuso deve restare salvata
+    // anche se il metodo termina con un'eccezione (prima il rollback la annullava).
+    @Transactional(noRollbackFor = BadCredentialsException.class)
     public LoginResponse refreshToken(RefreshTokenRequest request) {
         String tokenHash = sha256(request.refreshToken());
 
         var storedToken = refreshTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new BadCredentialsException("Invalid refresh token"));
+        var user = storedToken.getUser();
 
         if (storedToken.isRevoked()) {
+            if (isConcurrentRefresh(storedToken)) {
+                // Rinnovo concorrente di un'altra scheda: nuova coppia di token, senza
+                // revocare le sessioni (prima l'utente veniva disconnesso ovunque).
+                if (!user.isActive()) {
+                    throw new BadCredentialsException("Invalid refresh token");
+                }
+                return buildLoginResponse(user);
+            }
             // Possible token reuse attack: revoke ALL tokens for this user
-            refreshTokenRepository.revokeAllByUserId(storedToken.getUser().getId());
-            logger.warn("Refresh token reuse detected for user {}", storedToken.getUser().getEmail());
+            refreshTokenRepository.revokeAllByUserId(user.getId());
+            logger.warn("Refresh token reuse detected for user {}", user.getId());
             throw new BadCredentialsException("Invalid refresh token");
         }
 
@@ -336,14 +355,28 @@ public class AuthService {
 
         // Rotate: revoke old, issue new
         storedToken.setRevoked(true);
+        storedToken.setRevokedAt(Instant.now());
         refreshTokenRepository.save(storedToken);
 
-        var user = storedToken.getUser();
         if (!user.isActive()) {
             throw new BadCredentialsException("Invalid refresh token");
         }
 
         return buildLoginResponse(user);
+    }
+
+    /**
+     * Riuso entro pochi secondi da una rotazione, mentre la sessione è ancora viva.
+     * Un token revocato da logout o cambio password non ha revokedAt e non rientra; se dopo
+     * la rotazione è stato fatto logout, non esistono più token attivi e il riuso è rifiutato.
+     */
+    private boolean isConcurrentRefresh(RefreshToken token) {
+        var now = Instant.now();
+        return token.getRevokedAt() != null
+                && !token.isExpired()
+                && token.getRevokedAt().plus(REFRESH_REUSE_GRACE).isAfter(now)
+                && refreshTokenRepository.existsByUserIdAndRevokedFalseAndExpiresAtAfter(
+                        token.getUser().getId(), now);
     }
 
     // ── Logout (revoke all refresh tokens) ─────────────────────────
@@ -382,9 +415,11 @@ public class AuthService {
             throw new BadCredentialsException("Password non corretta");
         }
 
-        String normalizedEmail = request.newEmail().trim().toLowerCase();
+        String normalizedEmail = EmailNormalizer.normalize(request.newEmail());
 
-        if (appUserRepository.findByEmail(normalizedEmail).isPresent()) {
+        if (appUserRepository.findByEmailIgnoreCase(normalizedEmail)
+                .filter(other -> !other.getId().equals(userId))
+                .isPresent()) {
             throw new EmailAlreadyRegisteredException("Email già in uso");
         }
 
@@ -574,7 +609,7 @@ public class AuthService {
      */
     @Transactional
     public void recoverPassword(RecoverPasswordRequest request) {
-        var optUser = appUserRepository.findByEmail(request.email().trim().toLowerCase());
+        var optUser = appUserRepository.findByEmailIgnoreCase(EmailNormalizer.normalize(request.email()));
         if (optUser.isEmpty()) {
             // Anti-enumeration: non rivelare se l'email esiste o meno
             return;
@@ -605,7 +640,7 @@ public class AuthService {
     // anche quando il metodo termina con InvalidPasswordResetCodeException.
     @Transactional(noRollbackFor = InvalidPasswordResetCodeException.class)
     public void resetPassword(ResetPasswordRequest request) {
-        var user = appUserRepository.findByEmail(request.email().trim().toLowerCase())
+        var user = appUserRepository.findByEmailIgnoreCase(EmailNormalizer.normalize(request.email()))
                 .orElseThrow(() -> new InvalidPasswordResetCodeException(INVALID_RESET_CODE_MESSAGE));
 
         if (user.getPasswordResetCode() == null) {

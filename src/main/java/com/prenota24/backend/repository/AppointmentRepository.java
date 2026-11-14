@@ -8,7 +8,9 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -17,40 +19,20 @@ import com.prenota24.backend.domain.Appointment;
 import com.prenota24.backend.domain.AppointmentStatus;
 
 @Repository
-public interface AppointmentRepository extends JpaRepository<Appointment, UUID> {
+public interface AppointmentRepository extends JpaRepository<Appointment, UUID>,
+        JpaSpecificationExecutor<Appointment> {
 
+    /**
+     * Lista paginata con filtri combinabili (stato, professionista, intervallo): vedi
+     * {@code AppointmentService.list}. Override solo per caricare le associazioni in un'unica query.
+     */
+    @Override
     @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
-    Page<Appointment> findByStudioId(UUID studioId, Pageable pageable);
-
-    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
-    @Query("""
-            SELECT a FROM Appointment a
-            WHERE a.studio.id = :studioId
-            AND a.startDatetime >= :from
-            AND a.startDatetime < :to
-            """)
-    Page<Appointment> findByStudioIdAndDateRange(
-            @Param("studioId") UUID studioId,
-            @Param("from") Instant from,
-            @Param("to") Instant to,
-            Pageable pageable);
-
-    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
-    @Query("""
-            SELECT a FROM Appointment a
-            WHERE a.studio.id = :studioId
-            AND a.status = :status
-            AND a.startDatetime >= :from
-            AND a.startDatetime < :to
-            """)
-    Page<Appointment> findByStudioIdAndStatusAndDateRange(
-            @Param("studioId") UUID studioId,
-            @Param("status") AppointmentStatus status,
-            @Param("from") Instant from,
-            @Param("to") Instant to,
-            Pageable pageable);
+    Page<Appointment> findAll(Specification<Appointment> spec, Pageable pageable);
 
     Optional<Appointment> findByToken(String token);
+
+    boolean existsByClientId(UUID clientId);
 
     /**
      * Appuntamenti futuri ancora in attesa (non confermati né chiusi) di un cliente, cercato per
@@ -97,15 +79,6 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
             AND a.startDatetime < :to
             """)
     List<Appointment> findForReminder(@Param("from") Instant from, @Param("to") Instant to);
-
-    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
-    Page<Appointment> findByStudioIdAndProfessionalId(UUID studioId, UUID professionalId, Pageable pageable);
-
-    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
-    Page<Appointment> findByStudioIdAndStatus(UUID studioId, AppointmentStatus status, Pageable pageable);
-
-    @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
-    Page<Appointment> findByStudioIdAndStatusAndProfessionalId(UUID studioId, AppointmentStatus status, UUID professionalId, Pageable pageable);
 
     List<Appointment> findByClientIdAndStudioIdOrderByStartDatetimeDesc(UUID clientId, UUID studioId);
 

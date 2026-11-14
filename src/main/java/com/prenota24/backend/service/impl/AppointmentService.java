@@ -3,8 +3,8 @@ package com.prenota24.backend.service.impl;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -12,8 +12,11 @@ import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.persistence.criteria.Predicate;
 
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.common.SlotNotAvailableException;
@@ -95,39 +98,39 @@ public class AppointmentService implements IAppointmentService {
     @Transactional(readOnly = true)
     public Page<AppointmentResponse> list(UUID studioId, String status, UUID professionalId,
                                           LocalDate startDate, LocalDate endDate, Pageable pageable) {
-        boolean hasStatus = status != null && !status.isBlank();
-        boolean hasProfessional = professionalId != null;
-        boolean hasDateRange = startDate != null && endDate != null;
-        var appointmentStatus = hasStatus ? AppointmentStatus.valueOf(status) : null;
+        var appointmentStatus = status != null && !status.isBlank()
+                ? AppointmentStatus.valueOf(status)
+                : null;
+        if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
+            throw new IllegalArgumentException("La data di fine deve essere uguale o successiva a quella di inizio");
+        }
 
-        if (hasDateRange) {
-            var from = startDate.atStartOfDay(ZoneOffset.UTC).toInstant();
-            var to = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+        // I giorni sono quelli del fuso dello studio, non UTC: con UTC gli appuntamenti tra
+        // mezzanotte e l'01:00/02:00 (ora italiana) finivano nel giorno sbagliato.
+        var zone = studioZone(findStudio(studioId));
+        var from = startDate != null ? startDate.atStartOfDay(zone).toInstant() : null;
+        var to = endDate != null ? endDate.plusDays(1).atStartOfDay(zone).toInstant() : null;
 
-            if (hasStatus) {
-                return appointmentRepository
-                        .findByStudioIdAndStatusAndDateRange(
-                                studioId, appointmentStatus, from, to, pageable)
-                        .map(this::toResponse);
+        // Tutti i filtri si combinano: prima, con un intervallo di date, il professionista
+        // veniva ignorato e l'agenda mostrava gli appuntamenti di tutto lo studio.
+        Specification<Appointment> spec = (root, query, cb) -> {
+            var predicates = new ArrayList<Predicate>();
+            predicates.add(cb.equal(root.get("studio").get("id"), studioId));
+            if (appointmentStatus != null) {
+                predicates.add(cb.equal(root.get("status"), appointmentStatus));
             }
-            return appointmentRepository
-                    .findByStudioIdAndDateRange(studioId, from, to, pageable)
-                    .map(this::toResponse);
-        }
-
-        Page<Appointment> page;
-        if (hasStatus && hasProfessional) {
-            page = appointmentRepository.findByStudioIdAndStatusAndProfessionalId(
-                    studioId, appointmentStatus, professionalId, pageable);
-        } else if (hasStatus) {
-            page = appointmentRepository.findByStudioIdAndStatus(
-                    studioId, appointmentStatus, pageable);
-        } else if (hasProfessional) {
-            page = appointmentRepository.findByStudioIdAndProfessionalId(studioId, professionalId, pageable);
-        } else {
-            page = appointmentRepository.findByStudioId(studioId, pageable);
-        }
-        return page.map(this::toResponse);
+            if (professionalId != null) {
+                predicates.add(cb.equal(root.get("professional").get("id"), professionalId));
+            }
+            if (from != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("startDatetime"), from));
+            }
+            if (to != null) {
+                predicates.add(cb.lessThan(root.get("startDatetime"), to));
+            }
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
+        return appointmentRepository.findAll(spec, pageable).map(this::toResponse);
     }
 
     @Override
@@ -256,7 +259,7 @@ public class AppointmentService implements IAppointmentService {
 
         var studio = findStudio(studioId);
 
-        var zone = ZoneId.of(studio.getTimezone() != null ? studio.getTimezone() : "Europe/Rome");
+        var zone = studioZone(studio);
         var from = startDate.atStartOfDay(zone).toInstant();
         var to = endDate.plusDays(1).atStartOfDay(zone).toInstant();
 
@@ -336,6 +339,10 @@ public class AppointmentService implements IAppointmentService {
     private Appointment findByIdAndStudio(UUID id, UUID studioId) {
         return appointmentRepository.findByIdAndStudioId(id, studioId)
                 .orElseThrow(() -> new EntityNotFoundException("Appuntamento non trovato"));
+    }
+
+    private static ZoneId studioZone(Studio studio) {
+        return ZoneId.of(studio.getTimezone() != null ? studio.getTimezone() : "Europe/Rome");
     }
 
     private Studio findStudio(UUID studioId) {

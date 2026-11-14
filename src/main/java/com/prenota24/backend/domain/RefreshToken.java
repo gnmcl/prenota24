@@ -44,6 +44,10 @@ public class RefreshToken {
     @Column(nullable = false)
     private boolean revoked;
 
+    /** Momento della rotazione; null se mai ruotato o revocato in blocco (logout, password). */
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

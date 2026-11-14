@@ -7,6 +7,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeMap;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -61,11 +62,6 @@ public class SlotCalculatorService {
             unavailableSlots = exception.getSlots();
         }
 
-        // workStart/workEnd vengono SEMPRE dall'orario ricorrente (le eccezioni non lo sostituiscono più)
-        var availability = availabilities.getFirst();
-        LocalTime workStart = availability.getStartTime();
-        LocalTime workEnd = availability.getEndTime();
-
         // 3. Get existing appointments for this professional on this date
         Instant dayStart = date.atStartOfDay(zone).toInstant();
         Instant dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant();
@@ -73,34 +69,43 @@ public class SlotCalculatorService {
         var existingAppointments = appointmentRepository
                 .findActiveForProfessionalInRange(professionalId, dayStart, dayEnd);
 
-        // 4. Generate slots
-        List<TimeSlotResponse> slots = new ArrayList<>();
-        LocalTime cursor = workStart;
+        // 4. Generate slots for EVERY weekly window of the day (e.g. 09-13 and 15-19).
+        // Prima si usava solo la prima fascia e il pomeriggio spariva.
+        // Si lavora in minuti dal mezzanotte: con LocalTime, una fascia che finisce
+        // vicino alle 24 faceva "girare" l'orario a 00:00 e il ciclo non terminava mai.
+        // Il TreeMap ordina gli slot ed elimina i doppioni se due fasce si sovrappongono.
+        var slotsByStart = new TreeMap<Instant, TimeSlotResponse>();
         Duration slotDuration = Duration.ofMinutes(durationMinutes);
+        final var unavailable = unavailableSlots;
 
-        while (cursor.plus(slotDuration).compareTo(workEnd) <= 0) {
-            Instant slotStart = date.atTime(cursor).atZone(zone).toInstant();
-            Instant slotEnd = slotStart.plus(slotDuration);
+        for (var availability : availabilities) {
+            int windowEnd = availability.getEndTime().toSecondOfDay() / 60;
+            for (int cursor = availability.getStartTime().toSecondOfDay() / 60;
+                 cursor + durationMinutes <= windowEnd;
+                 cursor += durationMinutes) {
 
-            // Check conflitto con appuntamenti esistenti
-            boolean hasConflict = existingAppointments.stream().anyMatch(a ->
-                    a.getStartDatetime().isBefore(slotEnd) && a.getEndDatetime().isAfter(slotStart)
-            );
+                Instant slotStart = date.atStartOfDay().plusMinutes(cursor).atZone(zone).toInstant();
+                Instant slotEnd = slotStart.plus(slotDuration);
 
-            // Check sovrapposizione con finestre di indisponibilità (eccezioni)
-            boolean isUnavailable = unavailableSlots.stream().anyMatch(u -> {
-                Instant unavailStart = date.atTime(u.getStartTime()).atZone(zone).toInstant();
-                Instant unavailEnd = date.atTime(u.getEndTime()).atZone(zone).toInstant();
-                return slotStart.isBefore(unavailEnd) && slotEnd.isAfter(unavailStart);
-            });
+                // Check conflitto con appuntamenti esistenti
+                boolean hasConflict = existingAppointments.stream().anyMatch(a ->
+                        a.getStartDatetime().isBefore(slotEnd) && a.getEndDatetime().isAfter(slotStart)
+                );
 
-            if (!hasConflict && !isUnavailable) {
-                slots.add(new TimeSlotResponse(slotStart, slotEnd));
+                // Check sovrapposizione con finestre di indisponibilità (eccezioni)
+                boolean isUnavailable = unavailable.stream().anyMatch(u -> {
+                    Instant unavailStart = date.atTime(u.getStartTime()).atZone(zone).toInstant();
+                    Instant unavailEnd = date.atTime(u.getEndTime()).atZone(zone).toInstant();
+                    return slotStart.isBefore(unavailEnd) && slotEnd.isAfter(unavailStart);
+                });
+
+                if (!hasConflict && !isUnavailable) {
+                    slotsByStart.putIfAbsent(slotStart, new TimeSlotResponse(slotStart, slotEnd));
+                }
             }
-
-            cursor = cursor.plusMinutes(durationMinutes);
         }
 
+        List<TimeSlotResponse> slots = new ArrayList<>(slotsByStart.values());
         return slots;
     }
 }

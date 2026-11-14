@@ -17,6 +17,7 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 
     @Query("""
             SELECT n FROM Notification n
+            LEFT JOIN FETCH n.appointment
             WHERE n.status = com.prenota24.backend.domain.NotificationStatus.PENDING
             AND n.scheduledAt <= :now
             ORDER BY n.scheduledAt ASC

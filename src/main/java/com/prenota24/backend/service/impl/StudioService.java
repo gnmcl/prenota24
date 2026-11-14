@@ -1,5 +1,6 @@
 package com.prenota24.backend.service.impl;
 
+import java.time.ZoneId;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -37,7 +38,7 @@ public class StudioService implements IStudioService {
         if (request.name() != null) studio.setName(request.name());
         if (request.email() != null) studio.setEmail(request.email());
         if (request.phone() != null) studio.setPhone(request.phone());
-        if (request.timezone() != null) studio.setTimezone(request.timezone());
+        if (request.timezone() != null) studio.setTimezone(validTimezone(request.timezone()));
         if (request.maxAppointmentsPerDay() != null) studio.setMaxAppointmentsPerDay(request.maxAppointmentsPerDay());
         if (request.warningThreshold() != null) studio.setWarningThreshold(request.warningThreshold());
         if (request.criticalThreshold() != null) studio.setCriticalThreshold(request.criticalThreshold());
@@ -72,5 +73,18 @@ public class StudioService implements IStudioService {
                 studio.getWarningThreshold(),
                 studio.getCriticalThreshold()
         );
+    }
+
+    /**
+     * Il fuso viene usato con ZoneId.of() in slot, agenda e promemoria: un valore non valido
+     * salvato qui rompeva poi tutte quelle pagine. Si accettano solo fusi IANA (es.
+     * "Europe/Rome"), non offset fissi come "+01:00" che ignorano l'ora legale.
+     */
+    static String validTimezone(String timezone) {
+        var candidate = timezone.trim();
+        if (!ZoneId.getAvailableZoneIds().contains(candidate)) {
+            throw new IllegalArgumentException("Fuso orario non valido: usa un nome come Europe/Rome");
+        }
+        return candidate;
     }
 }

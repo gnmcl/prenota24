@@ -230,6 +230,7 @@ All custom exceptions are in `common/`:
 | `EmailNotVerifiedException` | `403 FORBIDDEN` | Login attempt before email verification |
 | `InvalidVerificationCodeException` | `422 UNPROCESSABLE_CONTENT` | Wrong, expired or locked-out email verification code |
 | `BookingLimitExceededException` | `422 UNPROCESSABLE_CONTENT` | Public booking over the per-email pending-requests limit |
+| `ResourceInUseException` | `409 CONFLICT` | Delete blocked by dependent data (e.g. client with appointments) |
 
 `GlobalExceptionHandler` in `common/` handles all of these. Do not add `try/catch` in controllers.
 

@@ -17,7 +17,15 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
 
     Page<Client> findByStudioId(UUID studioId, Pageable pageable);
 
-    Optional<Client> findByStudioIdAndEmailIgnoreCase(UUID studioId, String email);
+    /**
+     * Primo cliente dello studio con questa email. "First" perché in passato si potevano
+     * creare doppioni: con un Optional semplice la ricerca andava in errore (500).
+     */
+    Optional<Client> findFirstByStudioIdAndEmailIgnoreCaseOrderByCreatedAtAsc(UUID studioId, String email);
+
+    boolean existsByStudioIdAndEmailIgnoreCase(UUID studioId, String email);
+
+    boolean existsByStudioIdAndEmailIgnoreCaseAndIdNot(UUID studioId, String email, UUID id);
 
     Optional<Client> findByIdAndStudioId(UUID id, UUID studioId);
 

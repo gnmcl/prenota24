@@ -8,7 +8,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.prenota24.backend.common.EmailAlreadyRegisteredException;
+import com.prenota24.backend.common.EmailNormalizer;
 import com.prenota24.backend.common.EntityNotFoundException;
+import com.prenota24.backend.common.ResourceInUseException;
 import com.prenota24.backend.domain.Client;
 import com.prenota24.backend.domain.ClientNote;
 import com.prenota24.backend.domain.ClientSource;
@@ -43,12 +46,14 @@ public class ClientService implements IClientService {
     public ClientResponse create(CreateClientRequest request, UUID studioId) {
         var studio = studioRepository.findById(studioId)
                 .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
+        var email = normalizeClientEmail(request.email());
+        ensureEmailAvailable(clientRepository, studioId, email, null);
 
         var client = Client.builder()
                 .studio(studio)
                 .firstName(request.firstName())
                 .lastName(request.lastName())
-                .email(request.email())
+                .email(email)
                 .phone(request.phone())
                 .notes(request.notes())
                 .tags(request.tags())
@@ -83,7 +88,11 @@ public class ClientService implements IClientService {
 
         if (request.firstName() != null) client.setFirstName(request.firstName());
         if (request.lastName() != null) client.setLastName(request.lastName());
-        if (request.email() != null) client.setEmail(request.email());
+        if (request.email() != null) {
+            var email = normalizeClientEmail(request.email());
+            ensureEmailAvailable(clientRepository, studioId, email, client.getId());
+            client.setEmail(email);
+        }
         if (request.phone() != null) client.setPhone(request.phone());
         if (request.notes() != null) client.setNotes(request.notes());
         if (request.tags() != null) client.setTags(request.tags());
@@ -96,6 +105,12 @@ public class ClientService implements IClientService {
     @Transactional
     public void delete(UUID id, UUID studioId) {
         var client = findByIdAndStudio(id, studioId);
+        // Il vincolo sul database eliminava a cascata anche gli appuntamenti del cliente,
+        // cancellando in silenzio lo storico dello studio (e l'agenda futura).
+        if (appointmentRepository.existsByClientId(client.getId())) {
+            throw new ResourceInUseException(
+                    "Il cliente ha appuntamenti registrati e non può essere eliminato");
+        }
         clientRepository.delete(client);
     }
 
@@ -165,8 +180,9 @@ public class ClientService implements IClientService {
             return createMinimalClient(name, phone, studioId);
         }
 
-        return clientRepository.findByStudioIdAndEmailIgnoreCase(studioId, email)
-                .orElseGet(() -> createMinimalClient(name, phone, email, studioId, ClientSource.PUBLIC_BOOKING));
+        var normalizedEmail = normalizeClientEmail(email);
+        return clientRepository.findFirstByStudioIdAndEmailIgnoreCaseOrderByCreatedAtAsc(studioId, normalizedEmail)
+                .orElseGet(() -> createMinimalClient(name, phone, normalizedEmail, studioId, ClientSource.PUBLIC_BOOKING));
     }
 
     // ── Helpers ──────────────────────────────────────
@@ -234,6 +250,28 @@ public class ClientService implements IClientService {
                 .build();
 
         return clientRepository.save(client);
+    }
+
+    /** Email del cliente in forma canonica; vuota diventa null (cliente senza email). */
+    static String normalizeClientEmail(String email) {
+        var normalized = EmailNormalizer.normalize(email);
+        return normalized == null || normalized.isEmpty() ? null : normalized;
+    }
+
+    /**
+     * Un'email identifica un solo cliente per studio: la prenotazione pubblica usa l'email per
+     * ritrovare il cliente, quindi i doppioni ne rendono ambiguo lo storico.
+     */
+    static void ensureEmailAvailable(ClientRepository repository, UUID studioId, String email, UUID excludeId) {
+        if (email == null) {
+            return;
+        }
+        boolean taken = excludeId == null
+                ? repository.existsByStudioIdAndEmailIgnoreCase(studioId, email)
+                : repository.existsByStudioIdAndEmailIgnoreCaseAndIdNot(studioId, email, excludeId);
+        if (taken) {
+            throw new EmailAlreadyRegisteredException("Esiste già un cliente con questa email");
+        }
     }
 
     private Client findByIdAndStudio(UUID id, UUID studioId) {

@@ -1,5 +1,6 @@
 package com.prenota24.backend.service.impl;
 
+import com.prenota24.backend.common.EmailNormalizer;
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.domain.Event;
 import com.prenota24.backend.domain.EventStatus;
@@ -27,14 +28,16 @@ public class ReservationService implements IReservationService {
     @Override
     @Transactional
     public ReservationResponse create(String slug, CreateReservationRequest request) {
-        var event = eventRepository.findBySlug(slug)
+        // Lock sulla riga dell'evento: controllo dei posti e inserimento diventano atomici.
+        var event = eventRepository.findBySlugForUpdate(slug)
                 .orElseThrow(() -> new EntityNotFoundException("Evento non trovato"));
+        var guestEmail = EmailNormalizer.normalize(request.guestEmail());
 
         if (event.getStatus() != EventStatus.PUBLISHED) {
             throw new IllegalArgumentException("L'evento non è aperto alle prenotazioni");
         }
 
-        if (reservationRepository.existsByEventIdAndGuestEmail(event.getId(), request.guestEmail())) {
+        if (reservationRepository.existsByEventIdAndGuestEmailIgnoreCase(event.getId(), guestEmail)) {
             throw new IllegalArgumentException("Hai già una prenotazione per questo evento");
         }
 
@@ -48,7 +51,7 @@ public class ReservationService implements IReservationService {
         var reservation = Reservation.builder()
                 .event(event)
                 .guestName(request.guestName())
-                .guestEmail(request.guestEmail())
+                .guestEmail(guestEmail)
                 .guestPhone(request.guestPhone())
                 .notes(request.notes())
                 .status(ReservationStatus.CONFIRMED)

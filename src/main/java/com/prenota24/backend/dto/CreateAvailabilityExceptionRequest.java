@@ -1,5 +1,6 @@
 package com.prenota24.backend.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
@@ -9,6 +10,6 @@ import java.util.List;
 public record CreateAvailabilityExceptionRequest(
         @NotNull LocalDate date,
         boolean isUnavailableAllDay,
-        @NotNull List<CreateAvailabilityExceptionSlotRequest> slots,
+        @NotNull List<@Valid CreateAvailabilityExceptionSlotRequest> slots,
         String reason
 ) {}

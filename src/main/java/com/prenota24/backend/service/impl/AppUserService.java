@@ -1,5 +1,6 @@
 package com.prenota24.backend.service.impl;
 
+import com.prenota24.backend.common.EmailNormalizer;
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.domain.AppUser;
 import com.prenota24.backend.dto.AppUserResponse;
@@ -29,10 +30,10 @@ public class AppUserService implements IAppUserService {
         // Lo studio di destinazione è sempre quello dell'admin autenticato: un eventuale
         // studioId nel body viene ignorato, altrimenti un admin potrebbe creare utenti
         // (anche ADMIN) in uno studio altrui e prenderne il controllo.
-        var normalizedEmail = request.email().trim().toLowerCase();
+        var normalizedEmail = EmailNormalizer.normalize(request.email());
 
         // L'email è unica a livello globale (uq_user_email), non solo nello studio.
-        appUserRepository.findByEmail(normalizedEmail)
+        appUserRepository.findByEmailIgnoreCase(normalizedEmail)
                 .ifPresent(existing -> {
                     throw new com.prenota24.backend.common.EmailAlreadyRegisteredException(
                             "Email già registrata");

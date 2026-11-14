@@ -90,7 +90,7 @@ public class ProfessionalController {
     @PutMapping("/{id}/availability")
     @Operation(summary = "Imposta disponibilità settimanale (rimpiazza tutte le fasce)")
     public List<AvailabilityResponse> setAvailability(@PathVariable UUID id,
-                                                      @RequestBody @Valid List<AvailabilitySlotRequest> slots,
+                                                      @RequestBody List<@Valid AvailabilitySlotRequest> slots,
                                                       Authentication auth) {
         return professionalService.setAvailability(id, slots, authHelper.getStudioId(auth));
     }

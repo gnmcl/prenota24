@@ -42,7 +42,7 @@ class TenantIsolationTest {
     void createdUserAlwaysBelongsToTheAdminStudioIgnoringRequestStudioId() {
         var adminStudio = Studio.builder().id(UUID.randomUUID()).name("Mine").build();
         var victimStudioId = UUID.randomUUID();
-        when(appUserRepository.findByEmail("new@example.com")).thenReturn(Optional.empty());
+        when(appUserRepository.findByEmailIgnoreCase("new@example.com")).thenReturn(Optional.empty());
         when(studioRepository.findById(adminStudio.getId())).thenReturn(Optional.of(adminStudio));
         when(appUserRepository.save(any(AppUser.class))).thenAnswer(inv -> inv.getArgument(0));
 

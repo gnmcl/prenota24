@@ -1,5 +1,6 @@
 package com.prenota24.backend.service.impl;
 
+import com.prenota24.backend.common.EmailNormalizer;
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.domain.InvitationStatus;
 import com.prenota24.backend.domain.TeamInvitation;
@@ -10,7 +11,7 @@ import com.prenota24.backend.repository.ProfessionalRepository;
 import com.prenota24.backend.repository.StudioRepository;
 import com.prenota24.backend.repository.TeamInvitationRepository;
 import com.prenota24.backend.service.ITeamInvitationService;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,15 +21,27 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class TeamInvitationService implements ITeamInvitationService {
 
     private static final int EXPIRATION_DAYS = 7;
-    private static final String host = "prenota24.com";
 
     private final TeamInvitationRepository invitationRepository;
     private final ProfessionalRepository professionalRepository;
     private final StudioRepository studioRepository;
+    /** URL del frontend (app.frontend-url): prima il link era fisso a "prenota24.com", senza https. */
+    private final String frontendUrl;
+
+    public TeamInvitationService(TeamInvitationRepository invitationRepository,
+                                 ProfessionalRepository professionalRepository,
+                                 StudioRepository studioRepository,
+                                 @Value("${app.frontend-url}") String frontendUrl) {
+        this.invitationRepository = invitationRepository;
+        this.professionalRepository = professionalRepository;
+        this.studioRepository = studioRepository;
+        this.frontendUrl = frontendUrl.endsWith("/")
+                ? frontendUrl.substring(0, frontendUrl.length() - 1)
+                : frontendUrl;
+    }
 
     @Override
     @Transactional
@@ -49,7 +62,7 @@ public class TeamInvitationService implements ITeamInvitationService {
         var invitation = TeamInvitation.builder()
                 .studio(studio)
                 .professional(professional)
-                .email(request.email())
+                .email(EmailNormalizer.normalize(request.email()))
                 .token(UUID.randomUUID().toString().replace("-", ""))
                 .status(InvitationStatus.PENDING)
                 .expiresAt(Instant.now().plus(EXPIRATION_DAYS, ChronoUnit.DAYS))
@@ -114,7 +127,7 @@ public class TeamInvitationService implements ITeamInvitationService {
                 pro.getFirstName() + " " + pro.getLastName(),
                 inv.getEmail(),
                 inv.getStatus().name(),
-                host + "/invito/" + inv.getToken(),
+                frontendUrl + "/invito/" + inv.getToken(),
                 inv.getExpiresAt(),
                 inv.getCreatedAt()
         );
