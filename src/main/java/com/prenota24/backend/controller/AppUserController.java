@@ -28,8 +28,8 @@ public class AppUserController {
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Crea utente (solo ADMIN)")
-    public AppUserResponse create(@RequestBody @Valid CreateAppUserRequest request) {
-        return appUserService.create(request);
+    public AppUserResponse create(@RequestBody @Valid CreateAppUserRequest request, Authentication auth) {
+        return appUserService.create(request, authHelper.getStudioId(auth));
     }
 
     @GetMapping("/{id}")

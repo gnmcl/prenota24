@@ -1,8 +1,9 @@
 spring:
   application:
     name: prenota24
-  profiles:
-    active: ${SPRING_PROFILES_ACTIVE:dev}
+  # Nessun profilo di default: va scelto esplicitamente con SPRING_PROFILES_ACTIVE
+  # (dev, devmessaging, prod). Prima il default era "dev", che in produzione attivava
+  # un JWT secret noto, Swagger e il log dei parametri SQL.
 
   datasource:
     url: ${DB_URL}
@@ -63,6 +64,13 @@ whatsapp:
   connect-timeout: ${WHATSAPP_CONNECT_TIMEOUT:5s}
   request-timeout: ${WHATSAPP_REQUEST_TIMEOUT:10s}
   dispatch-delay-ms: ${WHATSAPP_DISPATCH_DELAY_MS:2000}
+
+# Swagger/OpenAPI spenti di default; li riaccendono solo i profili di sviluppo.
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: false
 
 server:
   error:

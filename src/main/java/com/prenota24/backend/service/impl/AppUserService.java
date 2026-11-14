@@ -25,18 +25,24 @@ public class AppUserService implements IAppUserService {
 
     @Override
     @Transactional
-    public AppUserResponse create(CreateAppUserRequest request) {
-        appUserRepository.findByEmailAndStudioId(request.email(), request.studioId())
+    public AppUserResponse create(CreateAppUserRequest request, UUID studioId) {
+        // Lo studio di destinazione è sempre quello dell'admin autenticato: un eventuale
+        // studioId nel body viene ignorato, altrimenti un admin potrebbe creare utenti
+        // (anche ADMIN) in uno studio altrui e prenderne il controllo.
+        var normalizedEmail = request.email().trim().toLowerCase();
+
+        // L'email è unica a livello globale (uq_user_email), non solo nello studio.
+        appUserRepository.findByEmail(normalizedEmail)
                 .ifPresent(existing -> {
                     throw new com.prenota24.backend.common.EmailAlreadyRegisteredException(
-                            "Email già registrata nello studio");
+                            "Email già registrata");
                 });
 
-        var studio = studioRepository.findById(request.studioId())
+        var studio = studioRepository.findById(studioId)
                 .orElseThrow(() -> new EntityNotFoundException("Studio non trovato"));
 
         var newUser = AppUser.builder()
-                .email(request.email().trim().toLowerCase())
+                .email(normalizedEmail)
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .role(request.role())
                 .active(true)

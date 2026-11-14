@@ -7,7 +7,8 @@ import com.prenota24.backend.dto.UpdateAppUserRequest;
 import java.util.UUID;
 
 public interface IAppUserService {
-    AppUserResponse create(CreateAppUserRequest request);
+    /** Crea un utente nello studio dell'admin autenticato ({@code studioId}). */
+    AppUserResponse create(CreateAppUserRequest request, UUID studioId);
     AppUserResponse getById(UUID id);
     AppUserResponse update(UUID id, UUID requestingUserId, UpdateAppUserRequest request);
 }

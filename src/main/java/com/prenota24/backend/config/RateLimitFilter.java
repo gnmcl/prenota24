@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -40,6 +41,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final String REGISTER_PATH = "/api/auth/register";
     private static final String RESEND_VERIFICATION_PATH = "/api/auth/resend-verification";
     private static final String PASSWORD_RECOVER_PATH = "/api/auth/password-recover";
+    /** Lunghezza massima di un indirizzo IPv6 testuale: evita chiavi enormi nelle mappe. */
+    private static final int MAX_IP_LENGTH = 45;
 
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> verificationEmailBuckets = new ConcurrentHashMap<>();
@@ -146,16 +149,45 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 && path.endsWith("/appointments");
     }
 
-    private String resolveClientIp(HttpServletRequest request) {
-        String remoteAddr = request.getRemoteAddr();
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isEmpty() && isPrivateOrLoopback(remoteAddr)) {
-            return xff.split(",")[0].trim();
+    /**
+     * Rimuove periodicamente i bucket tornati pieni (IP inattivi), così le mappe non crescono
+     * senza limite. Un bucket pieno equivale a uno nuovo, quindi l'eviction non allenta i limiti.
+     */
+    @Scheduled(fixedRate = 300_000)
+    public void evictIdleBuckets() {
+        evictFull(buckets, AUTH_MAX_ATTEMPTS);
+        evictFull(verificationEmailBuckets, VERIFICATION_EMAIL_MAX_ATTEMPTS);
+        evictFull(passwordRecoverBuckets, PASSWORD_RECOVER_MAX_ATTEMPTS);
+        evictFull(publicBookingBuckets, PUBLIC_BOOKING_MAX_ATTEMPTS);
+    }
+
+    private static void evictFull(Map<String, Bucket> map, int capacity) {
+        map.entrySet().removeIf(entry -> entry.getValue().getAvailableTokens() >= capacity);
+    }
+
+    /**
+     * Dietro un reverse proxy (es. Render) l'IP reale del client è l'ultimo valore di
+     * X-Forwarded-For, quello aggiunto dal proxy. I valori precedenti li scrive il client e
+     * non sono affidabili: usare il primo permetteva di aggirare il rate limit con IP inventati.
+     */
+    static String resolveClientIp(String remoteAddr, String xff) {
+        if (xff != null && !xff.isBlank() && isPrivateOrLoopback(remoteAddr)) {
+            String[] hops = xff.split(",");
+            for (int i = hops.length - 1; i >= 0; i--) {
+                String hop = hops[i].trim();
+                if (!hop.isEmpty()) {
+                    return hop.length() > MAX_IP_LENGTH ? hop.substring(0, MAX_IP_LENGTH) : hop;
+                }
+            }
         }
         return remoteAddr;
     }
 
-    private boolean isPrivateOrLoopback(String ip) {
+    private String resolveClientIp(HttpServletRequest request) {
+        return resolveClientIp(request.getRemoteAddr(), request.getHeader("X-Forwarded-For"));
+    }
+
+    private static boolean isPrivateOrLoopback(String ip) {
         try {
             InetAddress address = InetAddress.getByName(ip);
             return address.isAnyLocalAddress()

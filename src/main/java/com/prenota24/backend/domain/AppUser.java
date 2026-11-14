@@ -76,6 +76,10 @@ public class AppUser {
     @Builder.Default
     private boolean verificationImmediateResendUsed = false;
 
+    @Column(name = "verification_failed_attempts", nullable = false)
+    @Builder.Default
+    private int verificationFailedAttempts = 0;
+
     @Column(name = "password_reset_code", length = 6)
     private String passwordResetCode;
 
@@ -88,6 +92,10 @@ public class AppUser {
     @Column(name = "password_reset_immediate_resend_used", nullable = false)
     @Builder.Default
     private boolean passwordResetImmediateResendUsed = false;
+
+    @Column(name = "password_reset_failed_attempts", nullable = false)
+    @Builder.Default
+    private int passwordResetFailedAttempts = 0;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
