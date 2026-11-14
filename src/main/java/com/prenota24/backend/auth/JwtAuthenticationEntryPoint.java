@@ -27,12 +27,20 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 
-        ErrorResponse errorResponse = ErrorResponse.of(
-                HttpStatus.UNAUTHORIZED.value(),
-                "UNAUTHORIZED",
-                "Authentication required. Please provide a valid JWT token.",
-                request.getRequestURI()
-        );
+        boolean invalidToken = Boolean.TRUE.equals(
+                request.getAttribute(JwtAuthenticationFilter.INVALID_TOKEN_ATTRIBUTE));
+
+        ErrorResponse errorResponse = invalidToken
+                ? ErrorResponse.of(
+                        HttpStatus.UNAUTHORIZED.value(),
+                        "INVALID_TOKEN",
+                        "Invalid or expired JWT token",
+                        request.getRequestURI())
+                : ErrorResponse.of(
+                        HttpStatus.UNAUTHORIZED.value(),
+                        "UNAUTHORIZED",
+                        "Authentication required. Please provide a valid JWT token.",
+                        request.getRequestURI());
 
         objectMapper.writeValue(response.getOutputStream(), errorResponse);
     }

@@ -37,8 +37,10 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/professionals")
+// Area amministrativa: i professionisti usano /api/portal, limitato ai propri dati.
+@PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
-@Tag(name = "Professionals", description = "Gestione professionisti dello studio (CRUD solo ADMIN, lettura tutti)")
+@Tag(name = "Professionals", description = "Gestione professionisti dello studio (solo ADMIN)")
 public class ProfessionalController {
 
     private final IProfessionalService professionalService;
@@ -52,7 +54,6 @@ public class ProfessionalController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Crea professionista (solo ADMIN)")
     public ProfessionalResponse create(@RequestBody @Valid CreateProfessionalRequest request,
                                        Authentication auth) {
@@ -66,7 +67,6 @@ public class ProfessionalController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Aggiorna professionista (solo ADMIN)")
     public ProfessionalResponse update(@PathVariable UUID id,
                                        @RequestBody @Valid UpdateProfessionalRequest request,
@@ -76,7 +76,6 @@ public class ProfessionalController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Elimina professionista (solo ADMIN)")
     public void delete(@PathVariable UUID id, Authentication auth) {
         professionalService.delete(id, authHelper.getStudioId(auth));

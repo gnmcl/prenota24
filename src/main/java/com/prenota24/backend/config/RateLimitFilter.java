@@ -36,8 +36,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final Duration VERIFICATION_EMAIL_WINDOW = Duration.ofMinutes(1);
     private static final int PASSWORD_RECOVER_MAX_ATTEMPTS = 3;
     private static final Duration PASSWORD_RECOVER_WINDOW = Duration.ofMinutes(1);
-    private static final int PUBLIC_BOOKING_MAX_ATTEMPTS = 10;
-    private static final Duration PUBLIC_BOOKING_WINDOW = Duration.ofMinutes(5);
+    // Ogni richiesta pubblica occupa uno slot finché lo studio non risponde: limiti stretti
+    // per IP, sia a breve termine sia giornalieri (in aggiunta al limite per email nel service).
+    private static final int PUBLIC_BOOKING_MAX_ATTEMPTS = 5;
+    private static final Duration PUBLIC_BOOKING_WINDOW = Duration.ofMinutes(10);
+    private static final int PUBLIC_BOOKING_DAILY_MAX_ATTEMPTS = 15;
+    private static final Duration PUBLIC_BOOKING_DAILY_WINDOW = Duration.ofDays(1);
     private static final String REGISTER_PATH = "/api/auth/register";
     private static final String RESEND_VERIFICATION_PATH = "/api/auth/resend-verification";
     private static final String PASSWORD_RECOVER_PATH = "/api/auth/password-recover";
@@ -48,6 +52,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final Map<String, Bucket> verificationEmailBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> passwordRecoverBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> publicBookingBuckets = new ConcurrentHashMap<>();
+    // Mappa separata: con due limiti nello stesso bucket, l'eviction dei bucket "pieni"
+    // (basata sul limite più piccolo) azzererebbe anche il conteggio giornaliero.
+    private final Map<String, Bucket> publicBookingDailyBuckets = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
 
     @Override
@@ -63,8 +70,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         String ip = resolveClientIp(request);
         if (isPublicBookingCreation(request)) {
-            Bucket bookingBucket = publicBookingBuckets.computeIfAbsent(ip, k -> createPublicBookingBucket());
-            if (!bookingBucket.tryConsume(1)) {
+            Bucket bookingBucket = publicBookingBuckets.computeIfAbsent(ip,
+                    k -> createBucket(PUBLIC_BOOKING_MAX_ATTEMPTS, PUBLIC_BOOKING_WINDOW));
+            Bucket dailyBucket = publicBookingDailyBuckets.computeIfAbsent(ip,
+                    k -> createBucket(PUBLIC_BOOKING_DAILY_MAX_ATTEMPTS, PUBLIC_BOOKING_DAILY_WINDOW));
+            if (!bookingBucket.tryConsume(1) || !dailyBucket.tryConsume(1)) {
                 writeRateLimitedResponse(request, response);
                 return;
             }
@@ -133,11 +143,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
             .build();
     }
 
-    private Bucket createPublicBookingBucket() {
+    private static Bucket createBucket(int capacity, Duration window) {
         return Bucket.builder()
                 .addLimit(Bandwidth.builder()
-                        .capacity(PUBLIC_BOOKING_MAX_ATTEMPTS)
-                        .refillIntervally(PUBLIC_BOOKING_MAX_ATTEMPTS, PUBLIC_BOOKING_WINDOW)
+                        .capacity(capacity)
+                        .refillIntervally(capacity, window)
                         .build())
                 .build();
     }
@@ -159,6 +169,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         evictFull(verificationEmailBuckets, VERIFICATION_EMAIL_MAX_ATTEMPTS);
         evictFull(passwordRecoverBuckets, PASSWORD_RECOVER_MAX_ATTEMPTS);
         evictFull(publicBookingBuckets, PUBLIC_BOOKING_MAX_ATTEMPTS);
+        evictFull(publicBookingDailyBuckets, PUBLIC_BOOKING_DAILY_MAX_ATTEMPTS);
     }
 
     private static void evictFull(Map<String, Bucket> map, int capacity) {

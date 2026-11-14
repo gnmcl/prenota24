@@ -33,10 +33,13 @@ import com.prenota24.backend.dto.UpdateClientRequest;
 import com.prenota24.backend.service.IClientService;
 
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/clients")
+// Area amministrativa: i professionisti usano /api/portal, limitato ai propri dati.
+@PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
 @Tag(name = "Clients", description = "Gestione clienti dello studio")
 public class ClientController {

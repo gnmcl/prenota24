@@ -5,6 +5,7 @@ import com.prenota24.backend.domain.AppUser;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,4 +15,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
     Optional<AppUser> findByEmail(String email);
 
     Optional<AppUser> findByEmailAndStudioId(String email, UUID studioId);
+
+    /** Utenti di login collegati a un professionista (di norma al massimo uno). */
+    List<AppUser> findByProfessionalId(UUID professionalId);
 }

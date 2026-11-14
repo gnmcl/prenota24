@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.prenota24.backend.common.BookingLimitExceededException;
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.common.SlotNotAvailableException;
 import com.prenota24.backend.dto.AppointmentResponse;
@@ -19,7 +20,9 @@ import com.prenota24.backend.dto.PublicBookingRequest;
 import com.prenota24.backend.dto.ServiceTypeResponse;
 import com.prenota24.backend.dto.StudioPublicResponse;
 import com.prenota24.backend.dto.TimeSlotResponse;
+import com.prenota24.backend.domain.AppointmentStatus;
 import com.prenota24.backend.domain.Studio;
+import com.prenota24.backend.repository.AppointmentRepository;
 import com.prenota24.backend.repository.ServiceTypeRepository;
 import com.prenota24.backend.repository.StudioRepository;
 import com.prenota24.backend.service.IAppointmentService;
@@ -41,6 +44,16 @@ public class PublicBookingService implements IPublicBookingService {
     private final IClientService clientService;
     private final IAppointmentService appointmentService;
     private final ServiceTypeAssignmentValidator assignmentValidator;
+    private final AppointmentRepository appointmentRepository;
+
+    /**
+     * Richieste pubbliche in attesa che una stessa email può avere aperte in uno studio.
+     * Le richieste REQUESTED occupano lo slot (vincolo no_overlapping_appointments): senza
+     * un limite, poche richieste automatiche bastano a riempire l'agenda di un professionista.
+     */
+    static final int MAX_PENDING_PUBLIC_BOOKINGS_PER_EMAIL = 3;
+    private static final List<AppointmentStatus> PENDING_STATUSES =
+            List.of(AppointmentStatus.REQUESTED, AppointmentStatus.PROPOSED_NEW_TIME);
 
     @Override
     @Transactional(readOnly = true)
@@ -110,6 +123,7 @@ public class PublicBookingService implements IPublicBookingService {
                 throw new IllegalArgumentException("La durata non corrisponde al servizio selezionato");
             }
         }
+        enforcePendingBookingLimit(studio.getId(), request.clientEmail());
         validateAvailableSlot(studio, request, durationMinutesValue);
 
         var client = clientService.findOrCreateFromReservation(
@@ -138,6 +152,16 @@ public class PublicBookingService implements IPublicBookingService {
         var professional = professionalService.getById(professionalId, studioId);
         if (!professional.active()) {
             throw new EntityNotFoundException("Professionista non trovato");
+        }
+    }
+
+    private void enforcePendingBookingLimit(UUID studioId, String clientEmail) {
+        var pending = appointmentRepository.countFutureByStudioAndClientEmailAndStatusIn(
+                studioId, clientEmail.trim(), PENDING_STATUSES, Instant.now());
+        if (pending >= MAX_PENDING_PUBLIC_BOOKINGS_PER_EMAIL) {
+            throw new BookingLimitExceededException(
+                    "Hai già " + pending + " richieste in attesa di conferma presso questo studio. "
+                            + "Attendi una risposta prima di prenotare di nuovo.");
         }
     }
 

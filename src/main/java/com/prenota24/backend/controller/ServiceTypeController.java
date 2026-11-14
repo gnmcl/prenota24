@@ -13,10 +13,13 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.security.access.prepost.PreAuthorize;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/service-types")
+// Area amministrativa: i professionisti usano /api/portal, limitato ai propri dati.
+@PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
 @Tag(name = "Service Types", description = "Tipi di servizio offerti dallo studio (many-to-many con Professional)")
 public class ServiceTypeController {

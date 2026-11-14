@@ -1,8 +1,7 @@
 package com.prenota24.backend.auth;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.prenota24.backend.config.JwtProperties;
-import com.prenota24.backend.dto.ErrorResponse;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.FilterChain;
@@ -12,8 +11,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,12 +27,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
-    private final SecretKey key;
-    private final ObjectMapper objectMapper;
+    /** Attributo di richiesta impostato quando il Bearer token presente non è valido. */
+    public static final String INVALID_TOKEN_ATTRIBUTE = JwtAuthenticationFilter.class.getName() + ".INVALID_TOKEN";
 
-    public JwtAuthenticationFilter(JwtProperties jwtProperties, ObjectMapper objectMapper) {
+    private final SecretKey key;
+
+    public JwtAuthenticationFilter(JwtProperties jwtProperties) {
         this.key = Keys.hmacShaKeyFor(jwtProperties.secret().getBytes(StandardCharsets.UTF_8));
-        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -67,22 +65,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             var authentication = new UsernamePasswordAuthenticationToken(userId, null, authorities);
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
-            filterChain.doFilter(request, response);
-        } catch (Exception e) {
-            logger.error("JWT token validation failed: {}", e.getMessage());
+        } catch (JwtException | IllegalArgumentException e) {
+            // Un token non valido o scaduto non deve bloccare la richiesta qui: gli endpoint
+            // pubblici (/api/auth/refresh, /api/public/**) devono funzionare anche se il client
+            // allega ancora il vecchio access token, altrimenti il refresh fallisce e l'utente
+            // viene disconnesso a ogni scadenza. Gli endpoint protetti rispondono comunque 401
+            // tramite JwtAuthenticationEntryPoint, che legge questo attributo.
+            logger.debug("JWT token validation failed: {}", e.getMessage());
             SecurityContextHolder.clearContext();
-
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-
-            ErrorResponse errorResponse = ErrorResponse.of(
-                    HttpStatus.UNAUTHORIZED.value(),
-                    "INVALID_TOKEN",
-                    "Invalid or expired JWT token",
-                    request.getRequestURI()
-            );
-
-            objectMapper.writeValue(response.getOutputStream(), errorResponse);
+            request.setAttribute(INVALID_TOKEN_ATTRIBUTE, Boolean.TRUE);
         }
+
+        // Fuori dal try: un'eccezione a valle non deve essere scambiata per un token non valido
+        // né far eseguire la catena una seconda volta.
+        filterChain.doFilter(request, response);
     }
 }

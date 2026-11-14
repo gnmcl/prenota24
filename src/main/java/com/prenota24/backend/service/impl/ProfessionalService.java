@@ -7,9 +7,11 @@ import com.prenota24.backend.domain.AvailabilityExceptionSlot;
 import com.prenota24.backend.domain.Professional;
 import com.prenota24.backend.dto.*;
 import com.prenota24.backend.dto.AvailabilityExceptionSlotResponse;
+import com.prenota24.backend.repository.AppUserRepository;
 import com.prenota24.backend.repository.AvailabilityExceptionRepository;
 import com.prenota24.backend.repository.AvailabilityRepository;
 import com.prenota24.backend.repository.ProfessionalRepository;
+import com.prenota24.backend.repository.RefreshTokenRepository;
 import com.prenota24.backend.repository.StudioRepository;
 import com.prenota24.backend.service.IProfessionalService;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,8 @@ public class ProfessionalService implements IProfessionalService {
     private final AvailabilityExceptionRepository exceptionRepository;
     private final StudioRepository studioRepository;
     private final SlotCalculatorService slotCalculatorService;
+    private final AppUserRepository appUserRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     @Override
     @Transactional
@@ -74,7 +78,10 @@ public class ProfessionalService implements IProfessionalService {
         if (request.lastName() != null) professional.setLastName(request.lastName());
         if (request.email() != null) professional.setEmail(request.email());
         if (request.phone() != null) professional.setPhone(request.phone());
-        if (request.active() != null) professional.setActive(request.active());
+        if (request.active() != null && request.active() != professional.isActive()) {
+            professional.setActive(request.active());
+            syncLinkedUsers(professional);
+        }
 
         professional = professionalRepository.save(professional);
         return toResponse(professional);
@@ -85,7 +92,24 @@ public class ProfessionalService implements IProfessionalService {
     public void delete(UUID id, UUID studioId) {
         var professional = findByIdAndStudio(id, studioId);
         professional.setActive(false);
+        syncLinkedUsers(professional);
         professionalRepository.save(professional);
+    }
+
+    /**
+     * Allinea lo stato degli utenti di login collegati a quello del professionista.
+     * Senza questo, un professionista disattivato poteva continuare ad accedere al portale
+     * e a gestire appuntamenti e clienti. Alla disattivazione si revocano anche i refresh
+     * token, così le sessioni aperte non si rinnovano.
+     */
+    private void syncLinkedUsers(Professional professional) {
+        for (var user : appUserRepository.findByProfessionalId(professional.getId())) {
+            user.setActive(professional.isActive());
+            appUserRepository.save(user);
+            if (!professional.isActive()) {
+                refreshTokenRepository.revokeAllByUserId(user.getId());
+            }
+        }
     }
 
     // ── Availability ──────────────────────────────────────

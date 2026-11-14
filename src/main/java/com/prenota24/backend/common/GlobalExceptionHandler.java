@@ -188,6 +188,20 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(BookingLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleBookingLimitExceeded(
+            BookingLimitExceededException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
+                .body(ErrorResponse.of(
+                        HttpStatus.UNPROCESSABLE_CONTENT.value(),
+                        "TOO_MANY_PENDING_BOOKINGS",
+                        ex.getMessage(),
+                        request.getRequestURI()
+                ));
+    }
+
     @ExceptionHandler(MessagingConflictException.class)
     public ResponseEntity<ErrorResponse> handleMessagingConflict(
             MessagingConflictException ex,

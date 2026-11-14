@@ -52,6 +52,23 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
 
     Optional<Appointment> findByToken(String token);
 
+    /**
+     * Appuntamenti futuri ancora in attesa (non confermati né chiusi) di un cliente, cercato per
+     * email. Serve a limitare quante richieste pubbliche una stessa email può tenere aperte.
+     */
+    @Query("""
+            SELECT COUNT(a) FROM Appointment a
+            WHERE a.studio.id = :studioId
+            AND LOWER(a.client.email) = LOWER(:email)
+            AND a.status IN :statuses
+            AND a.startDatetime > :now
+            """)
+    long countFutureByStudioAndClientEmailAndStatusIn(
+            @Param("studioId") UUID studioId,
+            @Param("email") String email,
+            @Param("statuses") java.util.Collection<AppointmentStatus> statuses,
+            @Param("now") Instant now);
+
     @EntityGraph(attributePaths = {"professional", "client", "serviceType"})
     Optional<Appointment> findByIdAndStudioId(UUID id, UUID studioId);
 

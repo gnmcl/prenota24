@@ -36,9 +36,12 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/appointments")
+// Area amministrativa: i professionisti usano /api/portal, limitato ai propri dati.
+@PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
 @Tag(name = "Appointments", description = "Gestione appuntamenti dello studio (solo ADMIN/PROFESSIONAL autenticati)")
 public class AppointmentController {

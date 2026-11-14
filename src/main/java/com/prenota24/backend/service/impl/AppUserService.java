@@ -54,8 +54,11 @@ public class AppUserService implements IAppUserService {
 
     @Override
     @Transactional(readOnly = true)
-    public AppUserResponse getById(UUID id) {
+    public AppUserResponse getById(UUID id, UUID studioId) {
+        // Visibili solo gli utenti dello stesso studio: per gli altri rispondiamo 404,
+        // senza rivelare che l'id esiste.
         var user = appUserRepository.findById(id)
+                .filter(found -> found.getStudio().getId().equals(studioId))
                 .orElseThrow(() -> new EntityNotFoundException("Utente non trovato"));
         return toResponse(user);
     }
@@ -63,6 +66,14 @@ public class AppUserService implements IAppUserService {
     @Override
     @Transactional
     public AppUserResponse update(UUID id, UUID requestingUserId, UpdateAppUserRequest request) {
+        // Il cambio email passa solo da /api/account/change-email, che chiede la password:
+        // qui un token rubato (o un admin) potrebbe dirottare l'account cambiando l'email
+        // e poi avviando il recupero password.
+        if (request.email() != null && !request.email().isBlank()) {
+            throw new IllegalArgumentException(
+                    "L'email non si modifica da qui: usa /api/account/change-email");
+        }
+
         var appUser = appUserRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Utente non trovato"));
 
@@ -75,15 +86,16 @@ public class AppUserService implements IAppUserService {
                 && requestingUser.getStudio().getId().equals(appUser.getStudio().getId());
 
         if (!isSelf && !isAdminSameStudio) {
+            // 404 come in getById: un utente di un altro studio non deve risultare esistente.
+            if (!requestingUser.getStudio().getId().equals(appUser.getStudio().getId())) {
+                throw new EntityNotFoundException("Utente non trovato");
+            }
             throw new org.springframework.security.access.AccessDeniedException(
                     "Non hai i permessi per modificare questo utente");
         }
 
         if (request.name() != null && !request.name().isBlank()) {
             appUser.setName(request.name());
-        }
-        if (request.email() != null && !request.email().isBlank()) {
-            appUser.setEmail(request.email().trim().toLowerCase());
         }
 
         return toResponse(appUserRepository.save(appUser));

@@ -228,6 +228,8 @@ All custom exceptions are in `common/`:
 | `SlotNotAvailableException` | `409 CONFLICT` | Booking slot already taken |
 | `JwtAuthenticationException` | `401 UNAUTHORIZED` | JWT parse/validation failure |
 | `EmailNotVerifiedException` | `403 FORBIDDEN` | Login attempt before email verification |
+| `InvalidVerificationCodeException` | `422 UNPROCESSABLE_CONTENT` | Wrong, expired or locked-out email verification code |
+| `BookingLimitExceededException` | `422 UNPROCESSABLE_CONTENT` | Public booking over the per-email pending-requests limit |
 
 `GlobalExceptionHandler` in `common/` handles all of these. Do not add `try/catch` in controllers.
 
