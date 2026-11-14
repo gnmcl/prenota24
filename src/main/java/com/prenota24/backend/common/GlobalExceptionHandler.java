@@ -109,6 +109,20 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(InvalidVerificationCodeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidVerificationCode(
+            InvalidVerificationCodeException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
+                .body(ErrorResponse.of(
+                        HttpStatus.UNPROCESSABLE_CONTENT.value(),
+                        "INVALID_VERIFICATION_CODE",
+                        ex.getMessage(),
+                        request.getRequestURI()
+                ));
+    }
+
     /* ---------- VALIDATION ---------- */
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

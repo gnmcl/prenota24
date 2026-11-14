@@ -26,6 +26,7 @@ import com.prenota24.backend.common.EmailAlreadyRegisteredException;
 import com.prenota24.backend.common.EmailNotVerifiedException;
 import com.prenota24.backend.common.EntityNotFoundException;
 import com.prenota24.backend.common.InvalidPasswordResetCodeException;
+import com.prenota24.backend.common.InvalidVerificationCodeException;
 import com.prenota24.backend.config.JwtProperties;
 import com.prenota24.backend.config.ResendProperties;
 import com.prenota24.backend.domain.AppUser;
@@ -65,6 +66,11 @@ public class AuthService {
     private static final int CODE_EXPIRATION_MINUTES = 15;
     private static final int VERIFICATION_RESEND_COOLDOWN_SECONDS = 60;
     private static final int PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 60;
+    /** Tentativi errati ammessi per singolo codice OTP prima di invalidarlo. */
+    static final int MAX_OTP_FAILED_ATTEMPTS = 5;
+    private static final String INVALID_CODE_MESSAGE = "Codice non valido";
+    private static final String INVALID_RESET_CODE_MESSAGE = "Codice non valido o scaduto";
+    private static final String TOO_MANY_ATTEMPTS_MESSAGE = "Troppi tentativi errati. Richiedi un nuovo codice.";
 
     private final AppUserRepository appUserRepository;
     private final StudioRepository studioRepository;
@@ -139,11 +145,10 @@ public class AuthService {
             Instant expiryThreshold = Instant.now().minus(UNVERIFIED_EXPIRY_MINUTES, ChronoUnit.MINUTES);
 
             if (existing.getCreatedAt().isAfter(expiryThreshold)) {
-                // Within 30 min: update data and resend verification code
-                existing.setName(request.name());
-                existing.setPasswordHash(passwordEncoder.encode(request.password()));
-                existing.getStudio().setName(request.studioName());
-
+                // Within 30 min: resend the verification code only. Name, password and studio
+                // are NOT overwritten: whoever knows the email could otherwise set their own
+                // password on an account the real owner is about to verify (account takeover).
+                // The owner can change the password via password recovery after verifying.
                 Instant now = Instant.now();
                 if (isVerificationEmailRateLimited(existing, now)) {
                     logger.warn("Verification email throttled during register retry for {}", existing.getEmail());
@@ -196,23 +201,40 @@ public class AuthService {
 
     // ── Email verification ─────────────────────────────────────────
 
-    @Transactional
+    // noRollbackFor: il contatore dei tentativi falliti deve restare salvato anche quando
+    // il metodo termina con l'eccezione "codice non valido".
+    @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public LoginResponse verifyEmail(VerifyEmailRequest request) {
+        // Utente inesistente: stesso errore del codice errato, per non rivelare quali email esistono.
         var user = appUserRepository.findByEmail(request.email())
-                .orElseThrow(() -> new RuntimeException("Utente non trovato"));
+                .orElseThrow(() -> new InvalidVerificationCodeException(INVALID_CODE_MESSAGE));
 
         if (user.isEmailVerified()) {
-            throw new RuntimeException("Email già verificata");
+            throw new InvalidVerificationCodeException("Email già verificata");
         }
 
-        if (user.getVerificationCode() == null ||
-            !user.getVerificationCode().equals(request.code())) {
-            throw new RuntimeException("Codice non valido");
+        if (user.getVerificationCode() == null) {
+            throw new InvalidVerificationCodeException(INVALID_CODE_MESSAGE);
         }
 
         if (user.getVerificationCodeExpiresAt() != null &&
             user.getVerificationCodeExpiresAt().isBefore(Instant.now())) {
-            throw new RuntimeException("Codice scaduto. Richiedi un nuovo codice.");
+            throw new InvalidVerificationCodeException("Codice scaduto. Richiedi un nuovo codice.");
+        }
+
+        if (!codeMatches(user.getVerificationCode(), request.code())) {
+            int attempts = user.getVerificationFailedAttempts() + 1;
+            user.setVerificationFailedAttempts(attempts);
+            if (attempts >= MAX_OTP_FAILED_ATTEMPTS) {
+                // Codice bruciato: serve richiederne uno nuovo (soggetto al cooldown di invio).
+                user.setVerificationCode(null);
+                user.setVerificationCodeExpiresAt(null);
+                appUserRepository.save(user);
+                logger.warn("Verification code invalidated after {} failed attempts for {}", attempts, user.getEmail());
+                throw new InvalidVerificationCodeException(TOO_MANY_ATTEMPTS_MESSAGE);
+            }
+            appUserRepository.save(user);
+            throw new InvalidVerificationCodeException(INVALID_CODE_MESSAGE);
         }
 
         user.setEmailVerified(true);
@@ -220,6 +242,7 @@ public class AuthService {
         user.setVerificationCodeExpiresAt(null);
         user.setVerificationLastSentAt(null);
         user.setVerificationImmediateResendUsed(false);
+        user.setVerificationFailedAttempts(0);
         appUserRepository.save(user);
 
         logger.info("Email verified for user: {}", user.getEmail());
@@ -228,12 +251,12 @@ public class AuthService {
 
     @Transactional
     public void resendVerificationCode(ResendVerificationRequest request) {
-        var user = appUserRepository.findByEmail(request.email())
-                .orElseThrow(() -> new RuntimeException("Utente non trovato"));
-
-        if (user.isEmailVerified()) {
-            throw new RuntimeException("Email già verificata");
+        // Anti-enumeration: risposta identica (200) se l'utente non esiste o è già verificato.
+        var optUser = appUserRepository.findByEmail(request.email());
+        if (optUser.isEmpty() || optUser.get().isEmailVerified()) {
+            return;
         }
+        var user = optUser.get();
 
         Instant now = Instant.now();
         if (isVerificationEmailRateLimited(user, now)) {
@@ -481,6 +504,7 @@ public class AuthService {
 
             existingUser.setVerificationCode(code);
             existingUser.setVerificationCodeExpiresAt(now.plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
+            existingUser.setVerificationFailedAttempts(0);
             existingUser.setVerificationLastSentAt(now);
             if (isNewVerificationCycle) {
                 existingUser.setVerificationImmediateResendUsed(false);
@@ -511,6 +535,16 @@ public class AuthService {
             logger.error("Failed to send verification email to {}: {}", email, e.getMessage(), e);
             throw new RuntimeException("Failed to send verification email", e);
         }
+    }
+
+    /** Confronto a tempo costante, per non far trapelare informazioni sul codice dai tempi di risposta. */
+    private static boolean codeMatches(String expected, String supplied) {
+        if (expected == null || supplied == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                expected.getBytes(StandardCharsets.UTF_8),
+                supplied.getBytes(StandardCharsets.UTF_8));
     }
 
     private boolean hasActiveVerificationCode(AppUser user, Instant now) {
@@ -567,14 +601,15 @@ public class AuthService {
      * Non richiede la vecchia password perché l'utente l'ha dimenticata.
      * Revoca tutti i refresh token dopo il reset per forzare il re-login sugli altri dispositivi.
      */
-    @Transactional
+    // noRollbackFor: contatore tentativi e pulizia del codice scaduto devono essere salvati
+    // anche quando il metodo termina con InvalidPasswordResetCodeException.
+    @Transactional(noRollbackFor = InvalidPasswordResetCodeException.class)
     public void resetPassword(ResetPasswordRequest request) {
         var user = appUserRepository.findByEmail(request.email().trim().toLowerCase())
-                .orElseThrow(() -> new InvalidPasswordResetCodeException("Codice non valido o scaduto"));
+                .orElseThrow(() -> new InvalidPasswordResetCodeException(INVALID_RESET_CODE_MESSAGE));
 
-        if (user.getPasswordResetCode() == null
-                || !user.getPasswordResetCode().equals(request.code())) {
-            throw new InvalidPasswordResetCodeException("Codice non valido o scaduto");
+        if (user.getPasswordResetCode() == null) {
+            throw new InvalidPasswordResetCodeException(INVALID_RESET_CODE_MESSAGE);
         }
 
         if (user.getPasswordResetCodeExpiresAt() == null
@@ -583,12 +618,28 @@ public class AuthService {
             user.setPasswordResetCode(null);
             user.setPasswordResetCodeExpiresAt(null);
             appUserRepository.save(user);
-            throw new InvalidPasswordResetCodeException("Codice non valido o scaduto");
+            throw new InvalidPasswordResetCodeException(INVALID_RESET_CODE_MESSAGE);
+        }
+
+        if (!codeMatches(user.getPasswordResetCode(), request.code())) {
+            int attempts = user.getPasswordResetFailedAttempts() + 1;
+            user.setPasswordResetFailedAttempts(attempts);
+            if (attempts >= MAX_OTP_FAILED_ATTEMPTS) {
+                // Codice bruciato: serve richiederne uno nuovo (soggetto al cooldown di invio).
+                user.setPasswordResetCode(null);
+                user.setPasswordResetCodeExpiresAt(null);
+                appUserRepository.save(user);
+                logger.warn("Password reset code invalidated after {} failed attempts for {}", attempts, user.getEmail());
+                throw new InvalidPasswordResetCodeException(TOO_MANY_ATTEMPTS_MESSAGE);
+            }
+            appUserRepository.save(user);
+            throw new InvalidPasswordResetCodeException(INVALID_RESET_CODE_MESSAGE);
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         user.setPasswordResetCode(null);
         user.setPasswordResetCodeExpiresAt(null);
+        user.setPasswordResetFailedAttempts(0);
         appUserRepository.save(user);
 
         // Revoca tutti i refresh token: qualunque sessione aperta deve ri-autenticarsi
@@ -601,6 +652,7 @@ public class AuthService {
             String code = generateVerificationCode();
             user.setPasswordResetCode(code);
             user.setPasswordResetCodeExpiresAt(now.plus(CODE_EXPIRATION_MINUTES, ChronoUnit.MINUTES));
+            user.setPasswordResetFailedAttempts(0);
             user.setPasswordResetLastSentAt(now);
             if (isNewRecoveryCycle) {
                 user.setPasswordResetImmediateResendUsed(false);

@@ -10,7 +10,9 @@ public interface IReservationService {
 
     ReservationResponse create(String slug, CreateReservationRequest request);
 
-    List<ReservationResponse> getByEventId(UUID eventId);
+    /** Prenotazioni di un evento; solo per il creatore dell'evento, altrimenti 404. */
+    List<ReservationResponse> getByEventId(UUID eventId, UUID userId);
 
-    ReservationResponse cancel(UUID reservationId);
+    /** Cancella una prenotazione; solo per il creatore dell'evento, altrimenti 404. */
+    ReservationResponse cancel(UUID reservationId, UUID userId);
 }

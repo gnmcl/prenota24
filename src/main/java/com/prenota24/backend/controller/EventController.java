@@ -63,14 +63,16 @@ public class EventController {
 
     @GetMapping("/{id}/reservations")
     @Operation(summary = "Lista prenotazioni per un evento")
-    public List<ReservationResponse> getReservations(@PathVariable UUID id) {
-        return reservationService.getByEventId(id);
+    public List<ReservationResponse> getReservations(@PathVariable UUID id, Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        return reservationService.getByEventId(id, userId);
     }
 
     @PatchMapping("/reservations/{reservationId}/cancel")
     @Operation(summary = "Cancella prenotazione evento")
-    public ReservationResponse cancelReservation(@PathVariable UUID reservationId) {
-        return reservationService.cancel(reservationId);
+    public ReservationResponse cancelReservation(@PathVariable UUID reservationId, Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        return reservationService.cancel(reservationId, userId);
     }
 
     @DeleteMapping("/{id}")
