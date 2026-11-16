@@ -6,7 +6,7 @@ spring:
   application:
     name: prenota24
   datasource:
-    url: jdbc:postgresql://localhost:5433/prenota24
+    url: jdbc:postgresql://localhost:5432/prenota24
     username: prenota24
     password: prenota24
     driver-class-name: org.postgresql.Driver
