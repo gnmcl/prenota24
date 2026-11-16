@@ -1,0 +1,51 @@
+# ── DEV profile ──────────────────────────────────────────
+# Fallback values for local development only.
+# Run with: SPRING_PROFILES_ACTIVE=devmessaging
+
+spring:
+  application:
+    name: prenota24
+  datasource:
+    url: jdbc:postgresql://localhost:5433/messaging_v1_test
+    username: testuser
+    password: testpass
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+
+resend:
+  api-key: ${RESEND_API_KEY:re_test_placeholder}
+  from-address: ${RESEND_FROM_ADDRESS}
+  from-name: ${RESEND_FROM_NAME:Prenota24 Dev}
+
+jwt:
+  secret: dev-only-secret-change-in-production-min-32-chars!!
+  access-token-minutes: 60
+  refresh-token-days: 30
+
+app:
+  cors:
+    allowed-origins: http://localhost:4200,http://localhost:3000
+
+logging:
+  level:
+    root: INFO
+    com.prenota24: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.web.servlet.DispatcherServlet: DEBUG
+    org.springframework.transaction.interceptor: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE        # valori dei parametri nelle query SQL
+
+springdoc:
+  swagger-ui:
+    enabled: true
+  api-docs:
+    enabled: true
